@@ -41,6 +41,7 @@ services:
     build:
       context: ./frontend
       args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_APP_VERSION: ${NEXT_PUBLIC_APP_VERSION:-dev}
         NEXT_PUBLIC_SESSION_HEARTBEAT_SECONDS: ${NEXT_PUBLIC_SESSION_HEARTBEAT_SECONDS:-180}
     container_name: frontend
