@@ -31,7 +31,7 @@ This folder contains a seed script that populates Pay Tracker with realistic dem
 - Docker containers must be running: `docker compose up`
 - Python 3 with the `requests` package
 
-## How to use
+## How to use!
 
 **1. Install the dependency (one time):**
 
