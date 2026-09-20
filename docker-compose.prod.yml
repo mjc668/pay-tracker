@@ -17,7 +17,7 @@ services:
       start_period: 10s
 
   backend:
-    image: ghcr.io/marwin87/pay-tracker-backend:${PAY_TRACKER_VERSION:-latest}
+    image: ghcr.io/mjc84/pay-tracker-backend:${PAY_TRACKER_VERSION:-latest}
     container_name: backend
     restart: unless-stopped
     env_file: .env
@@ -36,7 +36,7 @@ services:
       - "8010:8000"
 
   frontend:
-    image: ghcr.io/marwin87/pay-tracker-frontend:${PAY_TRACKER_VERSION:-latest}
+    image: ghcr.io/mjc84/pay-tracker-frontend:${PAY_TRACKER_VERSION:-latest}
     container_name: frontend
     restart: unless-stopped
     env_file: .env
@@ -53,7 +53,7 @@ services:
       - "3010:3000"
 
   demo-data:
-    image: ghcr.io/marwin87/pay-tracker-demo:${PAY_TRACKER_VERSION:-latest}
+    image: ghcr.io/mjc84/pay-tracker-demo:${PAY_TRACKER_VERSION:-latest}
     container_name: demo-data
     profiles: ["demo"]
     depends_on:
