@@ -39,6 +39,20 @@ export default function RootLayout({
             __html: `(function(){var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.classList.add('dark');})();`,
           }}
         />
+        {(() => {
+          // Injected at request time from the container's .env (API_URL) so
+          // the same image works anywhere without being rebuilt. Falls back
+          // to the build-time NEXT_PUBLIC_API_URL when not set.
+          const apiBaseUrl = process.env.API_URL?.trim() ?? "";
+          if (!apiBaseUrl) return null;
+          return (
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.__PT_API_URL__=${JSON.stringify(apiBaseUrl)};`,
+              }}
+            />
+          );
+        })()}
       </head>
       <body className="min-h-full flex flex-col bg-slate-50 dark:bg-slate-900 antialiased">
         <PwaRegister />

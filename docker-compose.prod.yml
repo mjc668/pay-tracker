@@ -40,6 +40,10 @@ services:
     container_name: frontend
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Injected at request time so the same image works on any host without
+      # rebuilding; the baked build-time value is only a fallback.
+      API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8010}
     depends_on:
       backend:
         condition: service_healthy

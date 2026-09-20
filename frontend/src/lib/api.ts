@@ -3,7 +3,27 @@ export interface TokenResponse {
   token_type: string;
 }
 
-export const BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:8010";
+declare global {
+  interface Window {
+    // Runtime backend URL injected server-side from process.env.API_URL so a
+    // single image can be deployed anywhere without a rebuild.
+    __PT_API_URL__?: string;
+  }
+}
+
+// Resolve the backend base URL at call time: prefer the runtime override (set
+// from the container's .env by the server), then the build-time value if one
+// was baked, and finally a localhost default for local dev.
+export function getApiBaseUrl(): string {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.__PT_API_URL__ === "string" &&
+    window.__PT_API_URL__.trim()
+  ) {
+    return window.__PT_API_URL__;
+  }
+  return process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:8010";
+}
 
 export class SessionExpiredError extends Error {
   constructor() {
@@ -44,7 +64,7 @@ export async function apiFetch<T>(
   };
 
   // credentials: "include" sends the HttpOnly access_token cookie automatically.
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
     headers,
     credentials: "include",

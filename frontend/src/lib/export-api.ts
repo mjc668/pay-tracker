@@ -1,7 +1,7 @@
-import { apiFetch, BASE_URL, extractApiError } from "./api";
+import { apiFetch, getApiBaseUrl, extractApiError } from "./api";
 
 export async function downloadBackup(): Promise<void> {
-  const res = await fetch(`${BASE_URL}/export/json`, {
+  const res = await fetch(`${getApiBaseUrl()}/export/json`, {
     credentials: "include",
   });
 
@@ -22,7 +22,7 @@ export async function restoreFromBackup(
 ): Promise<{ restored_templates: number; restored_instances: number }> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${BASE_URL}/export/restore`, {
+  const res = await fetch(`${getApiBaseUrl()}/export/restore`, {
     method: "POST",
     credentials: "include",
     body: form,
@@ -39,7 +39,7 @@ export async function getExportSummary(): Promise<{
 }
 
 export async function getLastSnapshot(): Promise<{ created_at: string } | null> {
-  const res = await fetch(`${BASE_URL}/export/last-snapshot`, {
+  const res = await fetch(`${getApiBaseUrl()}/export/last-snapshot`, {
     credentials: "include",
   });
   if (res.status === 404) return null;
@@ -55,7 +55,7 @@ export async function restoreFromSnapshot(): Promise<{
 }
 
 export async function downloadXlsx(year: number): Promise<void> {
-  const res = await fetch(`${BASE_URL}/export/xlsx?year=${year}`, {
+  const res = await fetch(`${getApiBaseUrl()}/export/xlsx?year=${year}`, {
     credentials: "include",
   });
 
