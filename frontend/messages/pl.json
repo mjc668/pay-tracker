@@ -186,6 +186,11 @@
         "amountMismatch": "Oczekiwano {expected}, zapłacono {paid}",
         "delete": "Usuń płatność",
         "paymentNote": "Notatka do płatności",
+        "paidSoFar": "zapłacono {paid} z {total}",
+        "remaining": "pozostało {amount}",
+        "deletePaymentRecord": "Usuń wpis płatności",
+        "deleteEventFailed": "Nie udało się usunąć wpisu płatności.",
+        "revertFailed": "Nie udało się cofnąć płatności.",
         "emailNotification": "Powiadomienie email",
         "emailNotSent": "Powiadomienie email nie zostało wysłane",
         "emailSentOn": "Email wysłany"
@@ -203,10 +208,13 @@
     "MarkPaidDialog": {
         "title": "Oznacz jako opłacone: {billName}",
         "amountLabel": "Zapłacona kwota",
+        "remainingHint": "Pozostała kwota: {amount} {currency}",
+        "dateLabel": "Data płatności",
         "notesLabel": "Notatki (opcjonalnie)",
         "cancel": "Anuluj",
         "confirm": "Oznacz jako opłacone",
         "confirming": "Zapisywanie…",
+        "amountInvalid": "Wprowadź prawidłową kwotę.",
         "saveFailed": "Nie udało się zapisać płatności."
     },
     "RestoreButton": {

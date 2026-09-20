@@ -186,6 +186,11 @@
         "amountMismatch": "Expected {expected}, paid {paid}",
         "delete": "Delete payment",
         "paymentNote": "Payment note",
+        "paidSoFar": "paid {paid} of {total}",
+        "remaining": "remaining {amount}",
+        "deletePaymentRecord": "Delete payment record",
+        "deleteEventFailed": "Failed to delete payment record.",
+        "revertFailed": "Failed to revert payment.",
         "emailNotification": "Email notification",
         "emailNotSent": "Email notification not sent",
         "emailSentOn": "Email sent"
@@ -203,10 +208,13 @@
     "MarkPaidDialog": {
         "title": "Mark as Paid: {billName}",
         "amountLabel": "Amount paid",
+        "remainingHint": "Remaining balance: {amount} {currency}",
+        "dateLabel": "Payment date",
         "notesLabel": "Notes (optional)",
         "cancel": "Cancel",
         "confirm": "Mark as Paid",
         "confirming": "Marking…",
+        "amountInvalid": "Enter a valid amount.",
         "saveFailed": "Failed to record payment."
     },
     "RestoreButton": {

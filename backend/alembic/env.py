@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.database import Base
 import app.models.user  # noqa: F401
 import app.models.bill  # noqa: F401
+import app.models.payment  # noqa: F401
 import app.models.reset_token  # noqa: F401
 import app.models.restore_snapshot  # noqa: F401
 

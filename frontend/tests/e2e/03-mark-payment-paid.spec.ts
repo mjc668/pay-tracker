@@ -1,12 +1,15 @@
 /**
- * Flow 3: Mark a payment paid → status changes
+ * Flow 3: Record a payment → status changes, ledger updates
  * Risk: optimistic UI update not reflected — "Mark as Paid" stays after payment
- *       is recorded, or "Revert payment" never appears.
- * Real boundaries: auth, POST /bills/payments/:id/pay, UI state re-render.
+ *       is recorded, "Revert payment" never appears, or the ledger entry is missing.
+ * Real boundaries: auth, POST /bills/payments/:id/payments, UI state re-render.
  * Each test uses a fresh isolated user → exactly one payment row on the page.
  */
 import { test, expect } from '@playwright/test';
 import { loginNewUser, createBillViaApi, syncPaymentsViaApi } from './helpers';
+
+// Must match the amount created by createBillViaApi.
+const BILL_AMOUNT = '99.99';
 
 test('marking a payment paid replaces Mark as Paid with Revert payment', async ({ page }) => {
   const billName = `E2E Paid ${Date.now()}`;
@@ -23,9 +26,11 @@ test('marking a payment paid replaces Mark as Paid with Revert payment', async (
   // Step: click "Mark as Paid" (only one row → no ambiguity)
   await page.getByRole('button', { name: 'Mark as Paid' }).click();
 
-  // MarkPaidDialog appears — confirm
+  // MarkPaidDialog appears with a date field and the full amount pre-filled
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Payment date')).toBeVisible();
+  await expect(dialog.getByLabel('Amount paid')).toHaveValue(BILL_AMOUNT);
   await dialog.getByRole('button', { name: 'Mark as Paid' }).click();
 
   // Assert: "Revert payment" button appears (status changed to paid)
@@ -33,4 +38,52 @@ test('marking a payment paid replaces Mark as Paid with Revert payment', async (
 
   // Assert: "Mark as Paid" button is gone
   await expect(page.getByRole('button', { name: 'Mark as Paid' })).not.toBeVisible();
+
+  // Assert: a payment history entry is rendered
+  await expect(page.getByText(`paid ${BILL_AMOUNT} of ${BILL_AMOUNT}`)).toBeVisible();
+  await expect(page.getByLabel('Delete payment record')).toHaveCount(1);
+});
+
+test('partial payment keeps the row unpaid and shows the remaining balance', async ({ page }) => {
+  const billName = `E2E Partial ${Date.now()}`;
+
+  // Setup: authenticate + create bill + sync instances via API
+  await loginNewUser(page);
+  await createBillViaApi(page, billName);
+  await syncPaymentsViaApi(page);
+
+  await page.goto('/dashboard/payments');
+  await expect(page.getByText(billName)).toBeVisible();
+
+  // Derive the partial amount so the test works on any amount/date
+  const half = (parseFloat(BILL_AMOUNT) / 2).toFixed(2);
+  const remaining = (parseFloat(BILL_AMOUNT) - parseFloat(half)).toFixed(2);
+
+  // Record a partial payment
+  await page.getByRole('button', { name: 'Mark as Paid' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Amount paid').fill(half);
+  await dialog.getByRole('button', { name: 'Mark as Paid' }).click();
+  await expect(dialog).not.toBeVisible();
+
+  // Assert: row is still unpaid, with paid-so-far and remaining shown
+  await expect(page.getByRole('button', { name: 'Mark as Paid' })).toBeVisible();
+  await expect(page.getByLabel('Revert payment')).not.toBeVisible();
+  await expect(page.getByText(`paid ${half} of ${BILL_AMOUNT}`)).toBeVisible();
+  await expect(page.getByText(`remaining ${remaining} PLN`)).toBeVisible();
+
+  // Complete the payment — the dialog defaults to the remaining balance
+  await page.getByRole('button', { name: 'Mark as Paid' }).click();
+  const completeDialog = page.getByRole('dialog');
+  await expect(completeDialog).toBeVisible();
+  await expect(completeDialog.getByLabel('Amount paid')).toHaveValue(remaining);
+  await completeDialog.getByRole('button', { name: 'Mark as Paid' }).click();
+  await expect(completeDialog).not.toBeVisible();
+
+  // Assert: fully paid, both ledger entries visible
+  await expect(page.getByLabel('Revert payment')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mark as Paid' })).not.toBeVisible();
+  await expect(page.getByText(`paid ${BILL_AMOUNT} of ${BILL_AMOUNT}`)).toBeVisible();
+  await expect(page.getByLabel('Delete payment record')).toHaveCount(2);
 });

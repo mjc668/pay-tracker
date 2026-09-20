@@ -4,6 +4,15 @@ import type { BillCategory, BillFrequency } from "./bills-api";
 export type { BillFrequency };
 export type PaymentStatus = "upcoming" | "overdue" | "paid";
 
+export interface PaymentEvent {
+  id: number;
+  instance_id: number;
+  amount: string;
+  paid_on: string;
+  note: string | null;
+  created_at: string;
+}
+
 export interface PaymentInstanceOut {
   id: number;
   bill_id: number;
@@ -19,6 +28,7 @@ export interface PaymentInstanceOut {
   frequency: BillFrequency;
   category: BillCategory;
   email_sent_at: string | null;
+  payments: PaymentEvent[];
 }
 
 export function syncInstances(month: string): Promise<void> {
@@ -43,6 +53,28 @@ export function markPaid(
     method: "POST",
     body: JSON.stringify({ paid_amount: amount, notes: notes ?? null }),
   });
+}
+
+export function addPayment(
+  instanceId: number,
+  amount: number,
+  paidOn: string | null,
+  note?: string,
+): Promise<PaymentInstanceOut> {
+  return apiFetch<PaymentInstanceOut>(`/bills/payments/${instanceId}/payments`, {
+    method: "POST",
+    body: JSON.stringify({ amount: amount.toFixed(2), paid_on: paidOn, note: note ?? null }),
+  });
+}
+
+export function deletePaymentEvent(
+  instanceId: number,
+  paymentId: number,
+): Promise<PaymentInstanceOut> {
+  return apiFetch<PaymentInstanceOut>(
+    `/bills/payments/${instanceId}/payments/${paymentId}`,
+    { method: "DELETE" },
+  );
 }
 
 export function deletePayment(instanceId: number, deleteFuture = false): Promise<void> {

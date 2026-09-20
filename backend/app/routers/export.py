@@ -20,9 +20,16 @@ from app.models.bill import (
     PaymentInstance,
     PaymentStatus,
 )
+from app.models.payment import Payment
 from app.models.restore_snapshot import RestoreSnapshot
 from app.models.user import User
-from app.schemas.bill import BackupPayload, ExportSummaryOut, RestoreSnapshotOut
+from app.schemas.bill import (
+    BackupInstance,
+    BackupPayment,
+    BackupPayload,
+    ExportSummaryOut,
+    RestoreSnapshotOut,
+)
 
 router = APIRouter(prefix="/export", tags=["export"])
 
@@ -123,6 +130,15 @@ def _build_backup_arrays(db: Session, user_id: int) -> dict:
         if template_ids
         else []
     )
+    instance_ids = [i.id for i in instances]
+    payments = (
+        db.query(Payment)
+        .filter(Payment.instance_id.in_(instance_ids))
+        .order_by(Payment.instance_id, Payment.paid_on, Payment.id)
+        .all()
+        if instance_ids
+        else []
+    )
     return {
         "bill_templates": [
             {
@@ -158,6 +174,17 @@ def _build_backup_arrays(db: Session, user_id: int) -> dict:
             }
             for i in instances
         ],
+        "payments": [
+            {
+                "id": p.id,
+                "instance_id": p.instance_id,
+                "amount": float(p.amount),
+                "paid_on": p.paid_on.isoformat(),
+                "note": p.note,
+                "created_at": p.created_at.isoformat(),
+            }
+            for p in payments
+        ],
     }
 
 
@@ -167,7 +194,7 @@ def export_json(
     me: User = Depends(current_user),
 ):
     payload = {
-        "schema_version": 3,
+        "schema_version": 4,
         "exported_by": me.email,
         "exported_at": datetime.now(timezone.utc).isoformat(),
         **_build_backup_arrays(db, me.id),
@@ -204,14 +231,51 @@ def export_summary(
     return ExportSummaryOut(bill_count=bill_count, payment_count=payment_count)
 
 
+def _synthesize_payments(
+    instances: list[BackupInstance],
+) -> list[BackupPayment]:
+    """Build one ledger event per paid instance for v2/v3 backups (and old
+    restore snapshots) that predate the payments table."""
+    synthesized: list[BackupPayment] = []
+    for bi in instances:
+        if bi.status != PaymentStatus.paid:
+            continue
+        paid_on = (
+            datetime.fromisoformat(bi.paid_at).date()
+            if bi.paid_at
+            else date.fromisoformat(bi.due_date)
+        )
+        synthesized.append(
+            BackupPayment(
+                id=0,
+                instance_id=bi.id,
+                amount=bi.paid_amount if bi.paid_amount is not None else bi.amount,
+                paid_on=paid_on.isoformat(),
+                note=bi.notes,
+                created_at=bi.paid_at or bi.created_at,
+            )
+        )
+    return synthesized
+
+
 def _apply_backup(db: Session, user_id: int, backup: BackupPayload) -> tuple[int, int]:
-    """Destructively wipe a user's existing bill_templates/payment_instances and
-    re-insert the backup's contents. Shared by /restore and /restore-snapshot."""
+    """Destructively wipe a user's existing bill_templates/payment_instances/payments
+    and re-insert the backup's contents. Shared by /restore and /restore-snapshot."""
     existing_ids = [
         t.id
         for t in db.query(BillTemplate.id).filter(BillTemplate.user_id == user_id).all()
     ]
     if existing_ids:
+        existing_instance_ids = [
+            row.id
+            for row in db.query(PaymentInstance.id)
+            .filter(PaymentInstance.bill_id.in_(existing_ids))
+            .all()
+        ]
+        if existing_instance_ids:
+            db.query(Payment).filter(
+                Payment.instance_id.in_(existing_instance_ids)
+            ).delete(synchronize_session=False)
         db.query(PaymentInstance).filter(
             PaymentInstance.bill_id.in_(existing_ids)
         ).delete(synchronize_session=False)
@@ -238,6 +302,7 @@ def _apply_backup(db: Session, user_id: int, backup: BackupPayload) -> tuple[int
         db.flush()
         id_map[bt.id] = template_obj.id
 
+    instance_map: dict[int, int] = {}
     for bi in backup.payment_instances:
         instance_obj = PaymentInstance(
             bill_id=id_map[bi.bill_id],
@@ -254,6 +319,20 @@ def _apply_backup(db: Session, user_id: int, backup: BackupPayload) -> tuple[int
             reminder_sent_overdue=bi.reminder_sent_overdue,
         )
         db.add(instance_obj)
+        db.flush()
+        instance_map[bi.id] = instance_obj.id
+
+    payments = backup.payments or _synthesize_payments(backup.payment_instances)
+    for bp in payments:
+        db.add(
+            Payment(
+                instance_id=instance_map[bp.instance_id],
+                amount=Decimal(str(bp.amount)),
+                paid_on=date.fromisoformat(bp.paid_on),
+                note=bp.note,
+                created_at=datetime.fromisoformat(bp.created_at),
+            )
+        )
 
     return len(backup.bill_templates), len(backup.payment_instances)
 
@@ -276,7 +355,7 @@ def restore_json(
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="Invalid JSON")
 
-    if raw.get("schema_version") not in {2, 3}:
+    if raw.get("schema_version") not in {2, 3, 4}:
         raise HTTPException(status_code=422, detail="Unsupported schema version")
 
     try:
@@ -293,13 +372,20 @@ def restore_json(
             status_code=422, detail="Backup contains orphaned payment instances"
         )
 
+    instance_ids_in_backup = {i.id for i in backup.payment_instances}
+    orphaned_payments = [
+        p for p in backup.payments if p.instance_id not in instance_ids_in_backup
+    ]
+    if orphaned_payments:
+        raise HTTPException(status_code=422, detail="Backup contains orphaned payments")
+
     has_existing_bills = (
         db.query(BillTemplate.id).filter(BillTemplate.user_id == me.id).first()
         is not None
     )
     if has_existing_bills:
         snapshot_payload = {
-            "schema_version": 3,
+            "schema_version": 4,
             **_build_backup_arrays(db, me.id),
         }
         db.query(RestoreSnapshot).filter(RestoreSnapshot.user_id == me.id).delete(

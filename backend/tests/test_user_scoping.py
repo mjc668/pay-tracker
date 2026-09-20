@@ -155,11 +155,12 @@ def test_export_json_scoped(client):
     r = client.get("/export/json", headers=auth(tok_b))
     assert r.status_code == 200
     data = r.json()
-    assert data["schema_version"] == 3
+    assert data["schema_version"] == 4
     assert data["exported_by"] == "b@test.com"
     assert "users" not in data
     assert data["bill_templates"] == []
     assert data["payment_instances"] == []
+    assert data["payments"] == []
 
 
 def test_export_xlsx_scoped(client):

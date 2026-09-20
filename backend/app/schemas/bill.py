@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 from app.models.bill import BillCategory, BillFrequency, PaymentStatus
 
 
@@ -53,6 +53,17 @@ class BillTemplateOut(BaseModel):
         return None
 
 
+class PaymentOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    instance_id: int
+    amount: Decimal
+    paid_on: date
+    note: str | None
+    created_at: datetime
+
+
 class PaymentInstanceOut(BaseModel):
     model_config = {"from_attributes": True}
 
@@ -70,10 +81,26 @@ class PaymentInstanceOut(BaseModel):
     frequency: BillFrequency
     category: BillCategory
     email_sent_at: datetime | None
+    payments: list[PaymentOut] = []
+
+
+class PaymentCreate(BaseModel):
+    amount: Decimal = Field(gt=0)
+    paid_on: date | None = None  # null means "today"
+    note: str | None = None
+
+    @field_validator("paid_on")
+    @classmethod
+    def reject_future_dates(cls, v: date | None) -> date | None:
+        # One day of slack: a user ahead of UTC (up to +14) can legitimately
+        # record a payment dated "tomorrow" in server-UTC terms.
+        if v is not None and v > date.today() + timedelta(days=1):
+            raise ValueError("paid_on cannot be in the future")
+        return v
 
 
 class MarkPaidRequest(BaseModel):
-    paid_amount: Decimal | None = None  # defaults to template amount when None
+    paid_amount: Decimal | None = None  # defaults to remaining balance when None
     notes: str | None = None
 
 
@@ -113,10 +140,20 @@ class BackupInstance(BaseModel):
     reminder_sent_overdue: bool = False
 
 
+class BackupPayment(BaseModel):
+    id: int
+    instance_id: int
+    amount: Decimal
+    paid_on: str
+    note: str | None
+    created_at: str
+
+
 class BackupPayload(BaseModel):
     schema_version: int
     bill_templates: list[BackupTemplate]
     payment_instances: list[BackupInstance]
+    payments: list[BackupPayment] = []
 
 
 class ExportSummaryOut(BaseModel):

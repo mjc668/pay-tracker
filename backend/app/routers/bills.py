@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, selectinload
@@ -13,7 +14,14 @@ from app.schemas.bill import (
     BillTemplateUpdate,
     HasDeletedFutureOut,
     MarkPaidRequest,
+    PaymentCreate,
     PaymentInstanceOut,
+)
+from app.services.payments import (
+    clear_payments,
+    delete_payment as delete_payment_record,
+    get_total,
+    record_payment,
 )
 from app.services.recurrence import (
     _due_date_for_period,
@@ -23,6 +31,16 @@ from app.services.recurrence import (
 )
 
 router = APIRouter(prefix="/bills", tags=["bills"])
+
+
+def _get_scoped_instance(db: Session, instance_id: int, me: User) -> PaymentInstance:
+    """Load an instance and enforce ownership through bill → template.user_id."""
+    instance = db.get(PaymentInstance, instance_id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="Payment instance not found")
+    if instance.template.user_id != me.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return instance
 
 
 def _to_out(
@@ -46,6 +64,9 @@ def _to_out(
             "frequency": inst.template.frequency,
             "category": inst.template.category,
             "email_sent_at": inst.email_sent_at,
+            # Match the relationship's order_by even if the in-memory
+            # collection was appended to before a reload.
+            "payments": sorted(inst.payments, key=lambda p: (p.paid_on, p.id)),
         }
     )
 
@@ -111,7 +132,10 @@ def list_payments(
 
     instances = (
         db.query(PaymentInstance)
-        .options(selectinload(PaymentInstance.template))
+        .options(
+            selectinload(PaymentInstance.template),
+            selectinload(PaymentInstance.payments),
+        )
         .join(BillTemplate, PaymentInstance.bill_id == BillTemplate.id)
         .filter(
             BillTemplate.user_id == me.id,
@@ -134,6 +158,57 @@ def list_payments(
     return result
 
 
+@router.post("/payments/{instance_id}/payments", response_model=PaymentInstanceOut)
+def add_payment(
+    instance_id: int,
+    body: PaymentCreate,
+    db: Session = Depends(get_db),
+    me: User = Depends(current_user),
+):
+    """Record a partial or full payment event against an instance."""
+    instance = _get_scoped_instance(db, instance_id, me)
+    template = instance.template
+
+    _, became_fully_paid = record_payment(
+        db,
+        instance,
+        amount=body.amount,
+        paid_on=body.paid_on or date.today(),
+        note=body.note,
+    )
+    period = instance.period
+    db.commit()
+
+    # auto-create next period instance only on the transition to fully paid
+    if became_fully_paid and not template.is_paused:
+        generate_next_instance(db, template, period)
+
+    db.refresh(instance)
+    return _to_out(instance)
+
+
+@router.delete(
+    "/payments/{instance_id}/payments/{payment_id}",
+    response_model=PaymentInstanceOut,
+)
+def delete_payment_event(
+    instance_id: int,
+    payment_id: int,
+    db: Session = Depends(get_db),
+    me: User = Depends(current_user),
+):
+    """Delete a single payment event and recompute the instance summary."""
+    instance = _get_scoped_instance(db, instance_id, me)
+
+    deleted = delete_payment_record(db, instance, payment_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    db.commit()
+    db.refresh(instance)
+    return _to_out(instance)
+
+
 @router.post("/payments/{instance_id}/pay", response_model=PaymentInstanceOut)
 def mark_paid(
     instance_id: int,
@@ -141,28 +216,40 @@ def mark_paid(
     db: Session = Depends(get_db),
     me: User = Depends(current_user),
 ):
-    instance = db.get(PaymentInstance, instance_id)
-    if not instance:
-        raise HTTPException(status_code=404, detail="Payment instance not found")
+    """Legacy mark-as-paid: record one event for the remaining balance.
 
-    template = (
-        instance.template
-    )  # read before commit; expire_on_commit would force a lazy re-load after
-    if template.user_id != me.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    `paid_amount` defaults to `max(amount - ledger_total, 0)`. An explicit
+    lower amount leaves the instance partially paid. Calling this on an
+    already fully-paid instance is a no-op (prevents duplicate events from
+    retries/double-clicks).
+    """
+    instance = _get_scoped_instance(db, instance_id, me)
+    template = instance.template
 
-    instance.status = PaymentStatus.paid
-    instance.paid_at = datetime.now(timezone.utc)
-    instance.paid_amount = (
-        body.paid_amount if body.paid_amount is not None else instance.amount
+    if instance.status == PaymentStatus.paid:
+        return _to_out(instance)
+
+    total = get_total(instance)
+    remaining = max(instance.amount - total, Decimal("0"))
+    if remaining == 0:
+        # Ledger already covers the amount but the summary is stale (only
+        # possible if the instance amount changed): treat as already paid.
+        return _to_out(instance)
+
+    amount = body.paid_amount if body.paid_amount is not None else remaining
+    _, became_fully_paid = record_payment(
+        db,
+        instance,
+        amount=amount,
+        paid_on=date.today(),
+        note=body.notes,
     )
-    if body.notes:
-        instance.notes = body.notes
+    period = instance.period
     db.commit()
 
-    # auto-create next period instance unless template is paused
-    if not template.is_paused:
-        generate_next_instance(db, template, instance.period)
+    # auto-create next period instance only on the transition to fully paid
+    if became_fully_paid and not template.is_paused:
+        generate_next_instance(db, template, period)
 
     db.refresh(instance)
     return _to_out(instance)
@@ -174,21 +261,12 @@ def revert_payment(
     db: Session = Depends(get_db),
     me: User = Depends(current_user),
 ):
-    instance = db.get(PaymentInstance, instance_id)
-    if not instance:
-        raise HTTPException(status_code=404, detail="Payment instance not found")
-    template = instance.template
-    if template.user_id != me.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    """Revert a fully-paid instance by clearing every payment event."""
+    instance = _get_scoped_instance(db, instance_id, me)
     if instance.status != PaymentStatus.paid:
         raise HTTPException(status_code=400, detail="Payment is not marked as paid")
 
-    today = date.today()
-    instance.status = (
-        PaymentStatus.overdue if instance.due_date < today else PaymentStatus.upcoming
-    )
-    instance.paid_at = None
-    instance.paid_amount = None
+    clear_payments(db, instance)
     db.commit()
     db.refresh(instance)
     return _to_out(instance)

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
+    from app.models.payment import Payment
     from app.models.user import User
 
 
@@ -126,3 +127,8 @@ class PaymentInstance(Base):
     )
 
     template: Mapped["BillTemplate"] = relationship(back_populates="instances")
+    payments: Mapped[list["Payment"]] = relationship(
+        back_populates="instance",
+        cascade="all, delete-orphan",
+        order_by="Payment.paid_on, Payment.id",
+    )

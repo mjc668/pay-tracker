@@ -190,6 +190,11 @@
         "amountMismatch": "Erwartet {expected}, bezahlt {paid}",
         "delete": "Zahlung löschen",
         "paymentNote": "Zahlungsnotiz",
+        "paidSoFar": "bezahlt {paid} von {total}",
+        "remaining": "verbleibend {amount}",
+        "deletePaymentRecord": "Zahlungseintrag löschen",
+        "deleteEventFailed": "Zahlungseintrag konnte nicht gelöscht werden.",
+        "revertFailed": "Zahlung konnte nicht rückgängig gemacht werden.",
         "emailNotification": "E-Mail-Benachrichtigung",
         "emailNotSent": "E-Mail-Benachrichtigung nicht gesendet",
         "emailSentOn": "E-Mail gesendet"
@@ -207,10 +212,13 @@
     "MarkPaidDialog": {
         "title": "Als bezahlt markieren: {billName}",
         "amountLabel": "Bezahlter Betrag",
+        "remainingHint": "Restbetrag: {amount} {currency}",
+        "dateLabel": "Zahlungsdatum",
         "notesLabel": "Notizen (optional)",
         "cancel": "Abbrechen",
         "confirm": "Als bezahlt markieren",
         "confirming": "Speichern…",
+        "amountInvalid": "Geben Sie einen gültigen Betrag ein.",
         "saveFailed": "Zahlung konnte nicht gespeichert werden."
     },
     "RestoreButton": {

@@ -1,6 +1,7 @@
 """Integration tests for POST /export/restore."""
 
 import json
+from decimal import Decimal
 
 from tests.conftest import auth, register_and_login, sync_payments
 
@@ -72,6 +73,7 @@ def _make_backup(templates, instances, schema_version: int = 3):
 # Fields not preserved through restore (created_at uses DB default on insert)
 _EXCLUDE_TEMPLATE = {"id", "created_at"}
 _EXCLUDE_INSTANCE = {"id", "bill_id", "created_at"}
+_EXCLUDE_PAYMENT = {"id", "instance_id"}
 
 
 def _norm_template(t: dict) -> dict:
@@ -80,6 +82,10 @@ def _norm_template(t: dict) -> dict:
 
 def _norm_instance(i: dict) -> dict:
     return {k: v for k, v in i.items() if k not in _EXCLUDE_INSTANCE}
+
+
+def _norm_payment(p: dict) -> dict:
+    return {k: v for k, v in p.items() if k not in _EXCLUDE_PAYMENT}
 
 
 def _make_instance_dict(
@@ -121,6 +127,7 @@ def test_restore_happy_path(client):
     client.get("/bills/payments", headers=auth(tok))
 
     backup = client.get("/export/json", headers=auth(tok)).json()
+    assert backup["schema_version"] == 4
 
     r = _upload(client, tok, backup)
     assert r.status_code == 200
@@ -157,6 +164,45 @@ def test_restore_orphaned_instance(client):
     backup["payment_instances"][0]["bill_id"] = 99999
 
     r = _upload(client, tok, backup)
+    assert r.status_code == 422
+    assert "orphaned" in r.json()["detail"].lower()
+
+
+def test_restore_orphaned_payment_returns_422(client):
+    tok = register_and_login(client, "orphan_pay@test.com")
+
+    r = client.post("/bills", json=_BILL, headers=auth(tok))
+    assert r.status_code == 201
+    template_id = r.json()["id"]
+
+    template_dict = {
+        "id": template_id,
+        "name": _BILL["name"],
+        "category": _BILL["category"],
+        "frequency": _BILL["frequency"],
+        "amount": _BILL["amount"],
+        "currency": _BILL["currency"],
+        "due_day": _BILL["due_day"],
+        "notes": None,
+        "is_archived": False,
+        "is_paused": False,
+        "start_period": None,
+        "created_at": "2026-01-01T00:00:00+00:00",
+    }
+    instance_dict = _make_instance_dict(template_id, "2026-03", status="paid")
+    payload = _make_backup([template_dict], [instance_dict], schema_version=4)
+    payload["payments"] = [
+        {
+            "id": 1,
+            "instance_id": 99999,
+            "amount": 10.0,
+            "paid_on": "2026-03-15",
+            "note": None,
+            "created_at": "2026-03-15T00:00:00+00:00",
+        }
+    ]
+
+    r = _upload(client, tok, payload)
     assert r.status_code == 422
     assert "orphaned" in r.json()["detail"].lower()
 
@@ -247,9 +293,12 @@ def test_round_trip_field_level(client):
     assert r.status_code == 200
 
     backup = client.get("/export/json", headers=auth(tok)).json()
+    assert backup["schema_version"] == 4
     n_templates = len(backup["bill_templates"])
     n_instances = len(backup["payment_instances"])
+    n_payments = len(backup["payments"])
     assert n_instances >= 2  # ensure field-level loop actually exercises rows
+    assert n_payments >= 1  # the legacy /pay above recorded one ledger event
 
     r = _upload(client, tok, backup)
     assert r.status_code == 200
@@ -260,6 +309,7 @@ def test_round_trip_field_level(client):
     after = client.get("/export/json", headers=auth(tok)).json()
     assert len(after["bill_templates"]) == n_templates
     assert len(after["payment_instances"]) == n_instances
+    assert len(after["payments"]) == n_payments
 
     before_templates = sorted(backup["bill_templates"], key=lambda t: t["name"])
     after_templates = sorted(after["bill_templates"], key=lambda t: t["name"])
@@ -278,6 +328,17 @@ def test_round_trip_field_level(client):
         assert _norm_instance(b) == _norm_instance(
             a
         ), f"Instance mismatch: period={b['period']}"
+
+    before_payments = sorted(
+        backup["payments"], key=lambda p: (p["paid_on"], p["amount"], p["note"] or "")
+    )
+    after_payments = sorted(
+        after["payments"], key=lambda p: (p["paid_on"], p["amount"], p["note"] or "")
+    )
+    for b, a in zip(before_payments, after_payments):
+        assert _norm_payment(b) == _norm_payment(
+            a
+        ), f"Payment mismatch: paid_on={b['paid_on']}"
 
 
 def test_v2_backup_defaults_reminder_fields(client):
@@ -388,6 +449,95 @@ def test_v3_backup_preserves_reminder_flags(client):
     inst = after["payment_instances"][0]
     assert inst["reminder_sent_upcoming"] is True
     assert inst["reminder_sent_overdue"] is False
+
+
+def test_v3_backup_synthesizes_ledger_payments(client):
+    """A v3 backup's paid instance gets one synthetic ledger row on restore."""
+    tok = register_and_login(client, "v3synth@test.com")
+
+    r = client.post("/bills", json=_BILL_ALPHA, headers=auth(tok))
+    assert r.status_code == 201
+    template_id = r.json()["id"]
+
+    template_dict = {
+        "id": template_id,
+        "name": _BILL_ALPHA["name"],
+        "category": _BILL_ALPHA["category"],
+        "frequency": _BILL_ALPHA["frequency"],
+        "amount": _BILL_ALPHA["amount"],
+        "currency": _BILL_ALPHA["currency"],
+        "due_day": _BILL_ALPHA["due_day"],
+        "notes": None,
+        "is_archived": False,
+        "is_paused": False,
+        "start_period": None,
+        "created_at": "2026-01-01T00:00:00+00:00",
+    }
+    instance_dict = _make_instance_dict(
+        template_id,
+        "2026-01",
+        status="paid",
+        paid_at="2026-01-20T10:30:00+00:00",
+        paid_amount=42.00,
+        notes="legacy note",
+    )
+    payload = _make_backup([template_dict], [instance_dict], schema_version=3)
+
+    r = _upload(client, tok, payload)
+    assert r.status_code == 200
+    assert r.json()["restored_instances"] == 1
+
+    after = client.get("/export/json", headers=auth(tok)).json()
+    assert after["schema_version"] == 4
+    assert len(after["payments"]) == 1
+    payment = after["payments"][0]
+    assert payment["instance_id"] == after["payment_instances"][0]["id"]
+    assert Decimal(str(payment["amount"])) == Decimal("42.00")
+    assert payment["paid_on"] == "2026-01-20"
+    assert payment["note"] == "legacy note"
+
+
+def test_v3_backup_synthesis_falls_back_to_amount_and_due_date(client):
+    """A paid instance without paid_amount/paid_at synthesizes amount + due_date."""
+    tok = register_and_login(client, "v3synth_fallback@test.com")
+
+    r = client.post("/bills", json=_BILL_ALPHA, headers=auth(tok))
+    assert r.status_code == 201
+    template_id = r.json()["id"]
+
+    template_dict = {
+        "id": template_id,
+        "name": _BILL_ALPHA["name"],
+        "category": _BILL_ALPHA["category"],
+        "frequency": _BILL_ALPHA["frequency"],
+        "amount": _BILL_ALPHA["amount"],
+        "currency": _BILL_ALPHA["currency"],
+        "due_day": _BILL_ALPHA["due_day"],
+        "notes": None,
+        "is_archived": False,
+        "is_paused": False,
+        "start_period": None,
+        "created_at": "2026-01-01T00:00:00+00:00",
+    }
+    instance_dict = _make_instance_dict(
+        template_id,
+        "2026-02",
+        status="paid",
+        paid_at=None,
+        paid_amount=None,
+        notes=None,
+    )
+    payload = _make_backup([template_dict], [instance_dict], schema_version=3)
+
+    r = _upload(client, tok, payload)
+    assert r.status_code == 200
+
+    after = client.get("/export/json", headers=auth(tok)).json()
+    assert len(after["payments"]) == 1
+    payment = after["payments"][0]
+    assert Decimal(str(payment["amount"])) == Decimal("100.0")
+    assert payment["paid_on"] == "2026-02-15"
+    assert payment["note"] is None
 
 
 # ---------------------------------------------------------------------------

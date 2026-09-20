@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { AlertCircle, AtSign, CheckCircle, Loader2, MessageSquare, RotateCcw, Trash2 } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import type { PaymentInstanceOut } from "@/lib/payments-api";
-import { revertPay } from "@/lib/payments-api";
+import { deletePaymentEvent, revertPay } from "@/lib/payments-api";
 
 const STATUS_STYLES: Record<string, string> = {
   upcoming:
@@ -27,6 +27,15 @@ export default function PaymentRow({ instance, onMarkPaid, onDelete, onReverted,
   const t = useTranslations("PaymentRow");
   const locale = useLocale();
   const [reverting, setReverting] = useState(false);
+  const [deletingEventId, setDeletingEventId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [noteOpen, setNoteOpen] = useState(false);
   const noteRef = useRef<HTMLDivElement>(null);
   const [emailOpen, setEmailOpen] = useState(false);
@@ -56,11 +65,29 @@ export default function PaymentRow({ instance, onMarkPaid, onDelete, onReverted,
 
   async function handleRevert() {
     setReverting(true);
+    setActionError(null);
     try {
       const updated = await revertPay(instance.id);
       onReverted(updated);
+    } catch (err) {
+      if (!mounted.current) return;
+      setActionError(err instanceof Error ? err.message : t("revertFailed"));
     } finally {
-      setReverting(false);
+      if (mounted.current) setReverting(false);
+    }
+  }
+
+  async function handleDeleteEvent(paymentId: number) {
+    setDeletingEventId(paymentId);
+    setActionError(null);
+    try {
+      const updated = await deletePaymentEvent(instance.id, paymentId);
+      onReverted(updated);
+    } catch (err) {
+      if (!mounted.current) return;
+      setActionError(err instanceof Error ? err.message : t("deleteEventFailed"));
+    } finally {
+      if (mounted.current) setDeletingEventId(null);
     }
   }
 
@@ -95,6 +122,12 @@ export default function PaymentRow({ instance, onMarkPaid, onDelete, onReverted,
     instance.paid_amount != null &&
     parseFloat(instance.amount) > 0 &&
     parseFloat(instance.paid_amount) !== parseFloat(instance.amount);
+
+  const payments = instance.payments ?? [];
+  const hasLedger = payments.length > 0;
+  const ledgerTotal = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  const paidTotal = instance.paid_amount != null ? parseFloat(instance.paid_amount) : ledgerTotal;
+  const remainingTotal = Math.max(parseFloat(instance.amount) - paidTotal, 0);
 
   const emailSentAt = instance.email_sent_at ? new Date(instance.email_sent_at) : null;
   const emailSentAtFormatted = emailSentAt
@@ -157,8 +190,8 @@ export default function PaymentRow({ instance, onMarkPaid, onDelete, onReverted,
                 <span className="hidden sm:inline">{t("markAsPaid")}</span>
               </button>
             )}
-            {/* Note — visible for paid instances with a note */}
-            {instance.status === "paid" && instance.notes && (
+            {/* Note — legacy popover, only when there are no ledger entries */}
+            {instance.status === "paid" && instance.notes && !hasLedger && (
               <>
                 <div className="relative" ref={noteRef}>
                   <button
@@ -231,6 +264,55 @@ export default function PaymentRow({ instance, onMarkPaid, onDelete, onReverted,
             <AlertCircle size={12} className="shrink-0 text-amber-500 dark:text-amber-400" />
             <span>{t("amountMismatch", { expected: `${instance.amount} ${instance.currency}`, paid: `${instance.paid_amount} ${instance.currency}` })}</span>
           </div>
+        )}
+
+        {/* Payment ledger */}
+        {hasLedger && (
+          <div className="mt-2 border-t border-slate-200/70 pt-2 dark:border-slate-600/50">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">
+              <span className="font-medium text-slate-600 dark:text-slate-300">
+                {t("paidSoFar", { paid: paidTotal.toFixed(2), total: instance.amount })}
+              </span>
+              {instance.status !== "paid" && (
+                <span className="text-slate-500 dark:text-slate-400">
+                  {t("remaining", { amount: `${remainingTotal.toFixed(2)} ${instance.currency}` })}
+                </span>
+              )}
+            </div>
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {payments.map((payment) => (
+                <li
+                  key={payment.id}
+                  className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                >
+                  <span className="shrink-0">
+                    {formatDate(new Date(payment.paid_on + "T00:00:00"))}
+                  </span>
+                  <span className="font-medium text-slate-600 dark:text-slate-300">
+                    {payment.amount} {instance.currency}
+                  </span>
+                  {payment.note && <span className="truncate italic">{payment.note}</span>}
+                  <button
+                    onClick={() => handleDeleteEvent(payment.id)}
+                    disabled={deletingEventId === payment.id}
+                    title={t("deletePaymentRecord")}
+                    aria-label={t("deletePaymentRecord")}
+                    className="ml-auto shrink-0 rounded-lg p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50 disabled:cursor-not-allowed dark:text-slate-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                  >
+                    {deletingEventId === payment.id ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={12} />
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {actionError && (
+          <p className="mt-1 text-xs text-red-600 dark:text-red-400">{actionError}</p>
         )}
       </div>
     </div>

@@ -24,7 +24,12 @@ export default function DeletePaymentDialog({
   const [deleteFuture, setDeleteFuture] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   if (!isOpen) return null;
 
