@@ -1,7 +1,8 @@
 import os
 import warnings
+from urllib.parse import urlparse
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEFAULT_JWT_SECRET = "changeme-use-a-long-random-string"
@@ -88,6 +89,24 @@ class Settings(BaseSettings):
                 stacklevel=2,
             )
         return v
+
+    @model_validator(mode="after")
+    def warn_if_secure_cookie_over_http(self) -> "Settings":
+        if not self.cookie_secure:
+            return self
+        local_hosts = {"localhost", "127.0.0.1", "::1"}
+        if (
+            self.app_base_url.lower().startswith("http://")
+            and urlparse(self.app_base_url).hostname not in local_hosts
+        ):
+            warnings.warn(
+                f"COOKIE_SECURE=true but APP_BASE_URL ({self.app_base_url}) is "
+                "plain HTTP. Browsers reject Secure cookies over HTTP, so login "
+                "appears to succeed but every request bounces back to /login. "
+                "Serve over HTTPS or set COOKIE_SECURE=false.",
+                stacklevel=2,
+            )
+        return self
 
 
 settings = Settings()
