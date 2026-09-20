@@ -12,6 +12,8 @@ from app.schemas.bill import (
     BillTemplateCreate,
     BillTemplateOut,
     BillTemplateUpdate,
+    GenerateInstancesOut,
+    GenerateInstancesRequest,
     HasDeletedFutureOut,
     MarkPaidRequest,
     PaymentCreate,
@@ -27,6 +29,7 @@ from app.services.recurrence import (
     _due_date_for_period,
     backfill_template_instances,
     ensure_current_period_instances,
+    generate_future_instances,
     generate_next_instance,
 )
 
@@ -313,6 +316,37 @@ def sync_instances(
     target = month or current_month
     if target >= current_month:
         ensure_current_period_instances(db, target, me.id)
+
+
+@router.post("/generate-instances", response_model=GenerateInstancesOut)
+def generate_instances(
+    body: GenerateInstancesRequest,
+    db: Session = Depends(get_db),
+    me: User = Depends(current_user),
+):
+    """Pre-generate future payment instances for eligible templates.
+
+    Range is current UTC month+1 through +months inclusive. Idempotent: an
+    existing row (including a soft-deleted tombstone) blocks regeneration.
+    """
+    if body.bill_ids is not None:
+        requested = set(body.bill_ids)
+        owned = {
+            row[0]
+            for row in db.query(BillTemplate.id).filter(
+                BillTemplate.id.in_(requested),
+                BillTemplate.user_id == me.id,
+            )
+        }
+        if owned != requested:
+            raise HTTPException(status_code=404, detail="Bill not found")
+
+    created, bill_count = generate_future_instances(
+        db, me.id, body.months, body.bill_ids
+    )
+    return GenerateInstancesOut(
+        created=created, bill_count=bill_count, months=body.months
+    )
 
 
 @router.get("/{bill_id}/has-deleted-future", response_model=HasDeletedFutureOut)

@@ -2,7 +2,16 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ChevronsUpDown, Download, Loader2 } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsUpDown,
+  Download,
+  List,
+  Loader2,
+  X,
+} from "lucide-react";
 import { Fragment } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import {
@@ -10,10 +19,15 @@ import {
   syncInstances,
   type PaymentInstanceOut,
 } from "@/lib/payments-api";
+import type { BillCategory } from "@/lib/bills-api";
 import { CATEGORY_ORDER } from "@/lib/categories";
 import { downloadXlsx } from "@/lib/export-api";
 import { SessionExpiredError } from "@/lib/api";
 import PaymentRow from "@/components/payments/PaymentRow";
+import PaymentCalendar from "@/components/payments/PaymentCalendar";
+import PaymentFilters, {
+  type PaymentStatusFilter,
+} from "@/components/payments/PaymentFilters";
 import MarkPaidDialog from "@/components/payments/MarkPaidDialog";
 import DeletePaymentDialog from "@/components/payments/DeletePaymentDialog";
 import { useCollapsedCategories } from "@/hooks/useCollapsedCategories";
@@ -114,6 +128,10 @@ function PaymentsPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [xlsxLoadingYear, setXlsxLoadingYear] = useState<number | null>(null);
   const [xlsxError, setXlsxError] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "calendar">("list");
+  const [statusFilter, setStatusFilter] = useState<PaymentStatusFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<BillCategory | "all">("all");
+  const [searchFilter, setSearchFilter] = useState("");
 
   // Derived: true whenever selectedMonth hasn't finished loading yet.
   // Becomes true immediately when selectedMonth changes (same render), so no
@@ -188,6 +206,25 @@ function PaymentsPageInner() {
   const { collapsed, toggle, collapseAll, expandAll, allCollapsed } =
     useCollapsedCategories("payments-collapsed-categories", activeCategories);
 
+  const searchQuery = searchFilter.trim().toLowerCase();
+  const hasActiveFilters =
+    statusFilter !== "all" || categoryFilter !== "all" || searchQuery !== "";
+
+  const filteredInstances = instances.filter((inst) => {
+    if (statusFilter === "unpaid" && inst.status === "paid") return false;
+    if (statusFilter === "overdue" && inst.status !== "overdue") return false;
+    if (statusFilter === "paid" && inst.status !== "paid") return false;
+    if (categoryFilter !== "all" && inst.category !== categoryFilter) return false;
+    if (searchQuery && !inst.bill_name.toLowerCase().includes(searchQuery)) return false;
+    return true;
+  });
+
+  function clearFilters() {
+    setStatusFilter("all");
+    setCategoryFilter("all");
+    setSearchFilter("");
+  }
+
   async function handleExportXlsx(year: number) {
     setXlsxError(null);
     setXlsxLoadingYear(year);
@@ -220,13 +257,43 @@ function PaymentsPageInner() {
       )}
 
       {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-800 dark:text-slate-100">
-          {t("title")}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          {t("subtitle")}
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800 dark:text-slate-100">
+            {t("title")}
+          </h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {t("subtitle")}
+          </p>
+        </div>
+        <div className="flex rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+          <button
+            type="button"
+            aria-pressed={view === "list"}
+            onClick={() => setView("list")}
+            className={`flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors ${
+              view === "list"
+                ? "bg-green-700 text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            <List size={14} />
+            {t("viewList")}
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === "calendar"}
+            onClick={() => setView("calendar")}
+            className={`flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors ${
+              view === "calendar"
+                ? "bg-green-700 text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            <CalendarDays size={14} />
+            {t("viewCalendar")}
+          </button>
+        </div>
       </div>
 
       {/* Month selector */}
@@ -380,11 +447,64 @@ function PaymentsPageInner() {
         </div>
       )}
 
-      {/* Payment list */}
+      {/* Filters */}
       {!loading && !loadError && instances.length > 0 && (
+        <PaymentFilters
+          status={statusFilter}
+          category={categoryFilter}
+          search={searchFilter}
+          categories={activeCategories}
+          onStatusChange={setStatusFilter}
+          onCategoryChange={setCategoryFilter}
+          onSearchChange={setSearchFilter}
+          onClear={clearFilters}
+          hasActiveFilters={hasActiveFilters}
+        />
+      )}
+
+      {/* No matches */}
+      {!loading &&
+        !loadError &&
+        instances.length > 0 &&
+        filteredInstances.length === 0 && (
+          <div
+            data-testid="payment-no-matches"
+            className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 px-6 py-12 text-center"
+          >
+            <p className="font-medium text-slate-700 dark:text-slate-300">
+              {t("noMatches")}
+            </p>
+            <button
+              onClick={clearFilters}
+              className="mt-3 flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              <X size={14} />
+              {t("clearFilters")}
+            </button>
+          </div>
+        )}
+
+      {/* Payment calendar */}
+      {!loading &&
+        !loadError &&
+        view === "calendar" &&
+        filteredInstances.length > 0 && (
+          <PaymentCalendar
+            key={selectedMonth}
+            month={selectedMonth}
+            instances={filteredInstances}
+            todayStr={todayStr}
+            onMarkPaid={setDialogTarget}
+            onDelete={setDeleteTarget}
+            onReverted={handleInstanceReverted}
+          />
+        )}
+
+      {/* Payment list */}
+      {!loading && !loadError && view === "list" && filteredInstances.length > 0 && (
         <div className="flex flex-col gap-4">
-          {CATEGORY_ORDER.filter((cat) => instances.some((inst) => inst.category === cat)).map((cat) => {
-            const group = instances.filter((inst) => inst.category === cat);
+          {CATEGORY_ORDER.filter((cat) => filteredInstances.some((inst) => inst.category === cat)).map((cat) => {
+            const group = filteredInstances.filter((inst) => inst.category === cat);
             return (
               <div key={cat}>
                 <button

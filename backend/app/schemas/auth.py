@@ -1,8 +1,18 @@
+import re
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.core.security import validate_password_strength
+
+_CURRENCY_PATTERN = re.compile(r"^[A-Z0-9]{2,10}$")
+
+
+def _normalize_currency(value: str) -> str:
+    normalized = value.strip().upper()
+    if not _CURRENCY_PATTERN.match(normalized):
+        raise ValueError("default_currency must be 2-10 alphanumeric characters")
+    return normalized
 
 
 class RegisterRequest(BaseModel):
@@ -31,6 +41,7 @@ class UserProfileOut(BaseModel):
 
     email: EmailStr
     language_preference: str | None
+    default_currency: str | None
     email_reminders_enabled: bool
     notify_2_days_before: bool
     notify_1_day_before: bool
@@ -42,6 +53,7 @@ class UserProfileOut(BaseModel):
 
 class UserProfileUpdate(BaseModel):
     language_preference: Literal["en", "pl", "de"] | None = None
+    default_currency: str | None = None
     email_reminders_enabled: bool | None = None
     notify_2_days_before: bool | None = None
     notify_1_day_before: bool | None = None
@@ -49,6 +61,13 @@ class UserProfileUpdate(BaseModel):
     notify_1_day_after: bool | None = None
     reminder_send_minute: Annotated[int, Field(ge=0, le=1410)] | None = None
     monthly_summary_enabled: bool | None = None
+
+    @field_validator("default_currency")
+    @classmethod
+    def validate_default_currency(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return _normalize_currency(v)
 
 
 class ChangePasswordRequest(BaseModel):

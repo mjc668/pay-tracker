@@ -23,6 +23,18 @@ class TrendPoint(BaseModel):
     due_total: Decimal
 
 
+class ForecastPoint(BaseModel):
+    """Expected spend for a future period.
+
+    Always exactly 6 points (`month+1` … `month+6`, oldest first), independent
+    of the requested `months` window. Existing instances are not subtracted —
+    this is an expectation, not a remaining balance.
+    """
+
+    period: str
+    expected_total: Decimal
+
+
 class CategoryStat(BaseModel):
     category: BillCategory
     paid_total: Decimal
@@ -47,5 +59,6 @@ class StatsOverviewOut(BaseModel):
     other_currencies: list[str]
     summary: StatsSummary
     trend: list[TrendPoint]
+    forecast: list[ForecastPoint]
     by_category: list[CategoryStat]
     attention: list[AttentionItem]

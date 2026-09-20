@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, ChevronsUpDown, Plus } from "lucide-react";
+import { CalendarPlus, ChevronRight, ChevronsUpDown, Plus, Search, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   fetchBills,
@@ -13,13 +13,22 @@ import {
   type BillTemplateCreate,
   type BillTemplateUpdate,
 } from "@/lib/bills-api";
+import { fetchMe, type UserProfile } from "@/lib/user-api";
 import { SessionExpiredError } from "@/lib/api";
 import { CATEGORY_ORDER } from "@/lib/categories";
 import BillTemplateForm from "@/components/bills/BillTemplateForm";
 import BillTemplateRow from "@/components/bills/BillTemplateRow";
 import ArchiveConfirmDialog from "@/components/bills/ArchiveConfirmDialog";
 import RestoreDeletedDialog from "@/components/bills/RestoreDeletedDialog";
+import GenerateInstancesDialog from "@/components/bills/GenerateInstancesDialog";
 import { useCollapsedCategories } from "@/hooks/useCollapsedCategories";
+
+type BillStateFilter = "all" | "active" | "paused";
+
+const filterLabelClass =
+  "mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
+const filterSelectClass =
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition-all focus:border-green-500 focus:ring-2 focus:ring-green-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:focus:border-green-600 dark:focus:ring-green-900/40";
 
 export default function BillsPage() {
   const t = useTranslations("BillsPage");
@@ -34,6 +43,11 @@ export default function BillsPage() {
   const [deletedFutureMap, setDeletedFutureMap] = useState<Record<number, boolean>>({});
   const [restoreTarget, setRestoreTarget] = useState<{ id: number; name: string; data: BillTemplateUpdate } | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<(typeof CATEGORY_ORDER)[number] | "all">("all");
+  const [stateFilter, setStateFilter] = useState<BillStateFilter>("all");
+  const [searchFilter, setSearchFilter] = useState("");
 
   const activeCategories = CATEGORY_ORDER.filter((cat) =>
     templates.some((tmpl) => tmpl.category === cat),
@@ -63,6 +77,38 @@ export default function BillsPage() {
       cancelled = true;
     };
   }, [refreshKey, t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMe()
+      .then((data) => {
+        if (!cancelled) setProfile(data);
+      })
+      .catch(() => {
+        // Profile fetch failure is non-fatal — the form falls back to locale defaults.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const searchQuery = searchFilter.trim().toLowerCase();
+  const hasActiveFilters =
+    categoryFilter !== "all" || stateFilter !== "all" || searchQuery !== "";
+
+  const filteredTemplates = templates.filter((tmpl) => {
+    if (categoryFilter !== "all" && tmpl.category !== categoryFilter) return false;
+    if (stateFilter === "active" && tmpl.is_paused) return false;
+    if (stateFilter === "paused" && !tmpl.is_paused) return false;
+    if (searchQuery && !tmpl.name.toLowerCase().includes(searchQuery)) return false;
+    return true;
+  });
+
+  function clearFilters() {
+    setCategoryFilter("all");
+    setStateFilter("all");
+    setSearchFilter("");
+  }
 
   async function handleCreate(data: BillTemplateCreate) {
     await createBill(data);
@@ -167,6 +213,14 @@ export default function BillsPage() {
         />
       )}
 
+      {generateOpen && (
+        <GenerateInstancesDialog
+          templates={templates}
+          onClose={() => setGenerateOpen(false)}
+          onGenerated={() => setRefreshKey((k) => k + 1)}
+        />
+      )}
+
       {/* Page header */}
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-slate-800 dark:text-slate-100">
@@ -176,13 +230,22 @@ export default function BillsPage() {
           {t("subtitle")}
         </p>
         <div className="mt-3 flex items-center justify-between gap-2">
-          <button
-            onClick={() => toggleExpand("new")}
-            className="flex items-center gap-2 rounded-xl border border-green-700 bg-green-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:border-green-800 hover:bg-green-800 active:bg-green-900"
-          >
-            <Plus size={16} />
-            {expandedId === "new" ? t("cancel") : t("newBill")}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => toggleExpand("new")}
+              className="flex items-center gap-2 rounded-xl border border-green-700 bg-green-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:border-green-800 hover:bg-green-800 active:bg-green-900"
+            >
+              <Plus size={16} />
+              {expandedId === "new" ? t("cancel") : t("newBill")}
+            </button>
+            <button
+              onClick={() => setGenerateOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition-all hover:border-green-300 hover:bg-green-50 hover:text-green-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
+            >
+              <CalendarPlus size={16} />
+              {t("generatePayments")}
+            </button>
+          </div>
           {activeCategories.length > 1 && (
             <button
               onClick={allCollapsed ? expandAll : collapseAll}
@@ -194,6 +257,84 @@ export default function BillsPage() {
           )}
         </div>
       </div>
+
+      {/* Filters */}
+      {templates.length > 0 && (
+        <div
+          data-testid="bill-filters"
+          className="mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label htmlFor="bill-filter-category" className={filterLabelClass}>
+                {t("filterCategory")}
+              </label>
+              <select
+                id="bill-filter-category"
+                value={categoryFilter}
+                onChange={(e) =>
+                  setCategoryFilter(
+                    e.target.value as (typeof CATEGORY_ORDER)[number] | "all",
+                  )
+                }
+                className={filterSelectClass}
+              >
+                <option value="all">{t("filterAllCategories")}</option>
+                {activeCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {tCategories(cat)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="bill-filter-state" className={filterLabelClass}>
+                {t("filterState")}
+              </label>
+              <select
+                id="bill-filter-state"
+                value={stateFilter}
+                onChange={(e) => setStateFilter(e.target.value as BillStateFilter)}
+                className={filterSelectClass}
+              >
+                <option value="all">{t("filterAllStates")}</option>
+                <option value="active">{t("filterActive")}</option>
+                <option value="paused">{t("filterPaused")}</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="bill-filter-search" className={filterLabelClass}>
+                {t("filterName")}
+              </label>
+              <div className="relative">
+                <Search
+                  size={14}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+                />
+                <input
+                  id="bill-filter-search"
+                  type="search"
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  placeholder={t("searchPlaceholder")}
+                  className={filterSelectClass + " pl-8"}
+                />
+              </div>
+            </div>
+          </div>
+          {hasActiveFilters && (
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200"
+              >
+                <X size={13} />
+                {t("clearFilters")}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {loadError && (
         <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
@@ -209,10 +350,28 @@ export default function BillsPage() {
           </div>
           <div className="p-5">
             <BillTemplateForm
+              defaultCurrency={profile?.default_currency ?? undefined}
               onSave={handleCreate}
               onCancel={() => setExpandedId(null)}
             />
           </div>
+        </div>
+      )}
+
+      {/* No matches */}
+      {templates.length > 0 && filteredTemplates.length === 0 && (
+        <div
+          data-testid="bill-no-matches"
+          className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 px-6 py-12 text-center"
+        >
+          <p className="font-medium text-slate-700 dark:text-slate-300">{t("noMatches")}</p>
+          <button
+            onClick={clearFilters}
+            className="mt-3 flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+          >
+            <X size={14} />
+            {t("clearFilters")}
+          </button>
         </div>
       )}
 
@@ -233,10 +392,10 @@ export default function BillsPage() {
             {t("addFirstBill")}
           </button>
         </div>
-      ) : (
+      ) : filteredTemplates.length > 0 ? (
         <div className="flex flex-col gap-6">
-          {CATEGORY_ORDER.filter((cat) => templates.some((tmpl) => tmpl.category === cat)).map((cat) => {
-            const group = templates
+          {CATEGORY_ORDER.filter((cat) => filteredTemplates.some((tmpl) => tmpl.category === cat)).map((cat) => {
+            const group = filteredTemplates
               .filter((tmpl) => tmpl.category === cat)
               .sort((a, b) => a.name.localeCompare(b.name));
             return (
@@ -277,7 +436,7 @@ export default function BillsPage() {
             );
           })}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

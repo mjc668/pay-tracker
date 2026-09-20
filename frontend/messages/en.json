@@ -68,6 +68,7 @@
         "trendAriaLabel": "Spend trend chart",
         "trendPaid": "Paid",
         "trendDue": "Due",
+        "trendForecast": "Forecast",
         "trendEmpty": "No spending history yet.",
         "categoryTitle": "By category",
         "categoryEmpty": "No category spending in this period.",
@@ -80,7 +81,9 @@
         "attentionRemaining": "Remaining {amount}",
         "emptyTitle": "No bills yet",
         "emptyDesc": "Add your first bill to start tracking your spending.",
-        "emptyCta": "Add your first bill"
+        "emptyCta": "Add your first bill",
+        "miniCalendarTitle": "Calendar",
+        "miniCalendarLinkLabel": "View payments for {month}"
     },
     "BillsPage": {
         "title": "Your Bills",
@@ -92,7 +95,30 @@
         "addFirstBill": "Add your first bill",
         "viewArchive": "Archived bills",
         "collapseAll": "Collapse all",
-        "expandAll": "Expand all"
+        "expandAll": "Expand all",
+        "generatePayments": "Generate payments",
+        "filterCategory": "Category",
+        "filterState": "Status",
+        "filterName": "Search",
+        "filterAllCategories": "All categories",
+        "filterAllStates": "All",
+        "filterActive": "Active",
+        "filterPaused": "Paused",
+        "searchPlaceholder": "Search by name…",
+        "clearFilters": "Clear filters",
+        "noMatches": "No bills match these filters",
+        "generateDialog": {
+            "title": "Generate payments",
+            "description": "Create upcoming payment entries for recurring bills.",
+            "monthsLabel": "Months ahead",
+            "templatesLabel": "Bills to include",
+            "noEligible": "No active recurring bills available. Add a bill or unpause an existing one first.",
+            "submit": "Generate",
+            "submitting": "Generating…",
+            "created": "Created {count, plural, =0 {no payments} one {# payment} other {# payments}}",
+            "close": "Close",
+            "error": "Failed to generate payments."
+        }
     },
     "ArchivedBillsPage": {
         "backToActive": "Active bills",
@@ -199,7 +225,22 @@
         "summaryUpcoming": "upcoming",
         "summaryOverdueToday": "overdue today",
         "summaryOverdue": "overdue",
-        "summaryPaid": "paid"
+        "summaryPaid": "paid",
+        "viewList": "List",
+        "viewCalendar": "Calendar",
+        "filtersStatus": "Status",
+        "filtersCategory": "Category",
+        "filtersName": "Search",
+        "filterAllStatuses": "All statuses",
+        "filterUnpaid": "Unpaid",
+        "filterOverdue": "Overdue",
+        "filterPaid": "Paid",
+        "filterAllCategories": "All categories",
+        "searchPlaceholder": "Search by name…",
+        "clearFilters": "Clear filters",
+        "noMatches": "No payments match these filters",
+        "calendarLabel": "Payment calendar",
+        "calendarEmptyDay": "No payments on this day"
     },
     "PaymentRow": {
         "status": {"upcoming": "Upcoming", "overdue": "Overdue", "paid": "Paid"},
@@ -315,7 +356,15 @@
             "passwordTooShort": "Password must be at least 8 characters.",
             "wrongPassword": "Current password is incorrect.",
             "emailTaken": "That email is already registered.",
-            "emailAndPasswordRequired": "Please enter both a new email address and your current password."
+            "emailAndPasswordRequired": "Please enter both a new email address and your current password.",
+            "defaultCurrencyLabel": "Default currency",
+            "defaultCurrencyHint": "Pre-selected currency when creating a new bill.",
+            "defaultCurrencyNone": "Not set",
+            "defaultCurrencyCustom": "Custom…",
+            "defaultCurrencyCustomAriaLabel": "Custom currency code",
+            "defaultCurrencyPlaceholder": "e.g. CHF",
+            "defaultCurrencyInvalid": "Enter a 2–10 character currency code (letters and digits).",
+            "defaultCurrencySaveFailed": "Failed to save the default currency."
         },
         "emailNotifications": {
             "title": "Email Notifications",

@@ -22,6 +22,8 @@ type CurrencyOption = (typeof PRESET_CURRENCIES)[number] | "custom";
 
 interface Props {
   initial?: Partial<BillTemplateCreate>;
+  /** Currency preselected for new bills when the profile defines one. */
+  defaultCurrency?: string;
   onSave: (data: BillTemplateCreate) => Promise<void>;
   onCancel: () => void;
 }
@@ -38,7 +40,7 @@ const inputClass =
 
 const labelClass = "block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1.5";
 
-export default function BillTemplateForm({ initial, onSave, onCancel }: Props) {
+export default function BillTemplateForm({ initial, defaultCurrency, onSave, onCancel }: Props) {
   const t = useTranslations("BillTemplateForm");
   const locale = useLocale();
   const [name, setName] = useState(initial?.name ?? "");
@@ -47,7 +49,8 @@ export default function BillTemplateForm({ initial, onSave, onCancel }: Props) {
     initial?.frequency ?? "monthly",
   );
   const [amount, setAmount] = useState(initial?.amount ?? "");
-  const initialCurrency = initial?.currency ?? LOCALE_DEFAULT_CURRENCY[locale] ?? "EUR";
+  const initialCurrency =
+    initial?.currency ?? defaultCurrency ?? LOCALE_DEFAULT_CURRENCY[locale] ?? "EUR";
   const isPreset = (PRESET_CURRENCIES as readonly string[]).includes(initialCurrency);
   const [currencyOption, setCurrencyOption] = useState<CurrencyOption>(
     isPreset ? (initialCurrency as CurrencyOption) : "custom",

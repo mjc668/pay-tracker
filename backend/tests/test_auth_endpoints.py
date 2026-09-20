@@ -112,6 +112,52 @@ def test_patch_me_invalid_language_returns_422(client):
 
 
 # ---------------------------------------------------------------------------
+# PATCH /auth/me — default currency
+# ---------------------------------------------------------------------------
+
+
+def test_get_me_default_currency_starts_null(client):
+    token = register_and_login(client, "currency_default@test.com", _PASSWORD)
+    r = client.get("/auth/me", headers=auth(token))
+    assert r.status_code == 200
+    assert r.json()["default_currency"] is None
+
+
+def test_patch_me_sets_default_currency_normalized(client):
+    token = register_and_login(client, "currency@test.com", _PASSWORD)
+    r = client.patch(
+        "/auth/me", json={"default_currency": " eur "}, headers=auth(token)
+    )
+    assert r.status_code == 200
+    assert r.json()["default_currency"] == "EUR"
+
+    # Round-trip through GET to confirm DB persistence, not just an echo.
+    r = client.get("/auth/me", headers=auth(token))
+    assert r.status_code == 200
+    assert r.json()["default_currency"] == "EUR"
+
+
+def test_patch_me_clears_default_currency_with_explicit_null(client):
+    token = register_and_login(client, "currency_clear@test.com", _PASSWORD)
+    r = client.patch("/auth/me", json={"default_currency": "PLN"}, headers=auth(token))
+    assert r.status_code == 200
+
+    r = client.patch("/auth/me", json={"default_currency": None}, headers=auth(token))
+    assert r.status_code == 200
+    assert r.json()["default_currency"] is None
+
+    r = client.get("/auth/me", headers=auth(token))
+    assert r.json()["default_currency"] is None
+
+
+@pytest.mark.parametrize("value", ["A", "TOOLONGVALUE", "US D", "EU-R", "   ", "€"])
+def test_patch_me_invalid_default_currency_returns_422(client, value):
+    token = register_and_login(client, "currency_bad@test.com", _PASSWORD)
+    r = client.patch("/auth/me", json={"default_currency": value}, headers=auth(token))
+    assert r.status_code == 422, value
+
+
+# ---------------------------------------------------------------------------
 # PATCH /auth/change-password
 # ---------------------------------------------------------------------------
 

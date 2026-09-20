@@ -66,3 +66,19 @@ export function archiveBill(id: number): Promise<void> {
 export function hasDeletedFuture(id: number): Promise<{ has_deleted_future: boolean }> {
   return apiFetch<{ has_deleted_future: boolean }>(`/bills/${id}/has-deleted-future`);
 }
+
+export interface GenerateInstancesResponse {
+  created: number;
+  bill_count: number;
+  months: number;
+}
+
+export function generateInstances(
+  months: number,
+  billIds?: number[],
+): Promise<GenerateInstancesResponse> {
+  return apiFetch<GenerateInstancesResponse>("/bills/generate-instances", {
+    method: "POST",
+    body: JSON.stringify({ months, bill_ids: billIds ?? null }),
+  });
+}

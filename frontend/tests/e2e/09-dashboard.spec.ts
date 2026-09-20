@@ -1,10 +1,11 @@
 /**
  * Flow 9: Dashboard stats overview
  * Risk: stats data is not rendered — the summary card ignores the recorded
- *       partial payment, the trend chart SVG is missing, or the attention row
- *       links to the wrong month.
+ *       partial payment, the trend chart SVG is missing, the forecast series
+ *       is absent for an active recurring bill, the mini-calendar is missing,
+ *       or the attention row links to the wrong month.
  * Real boundaries: auth, POST /bills, POST /bills/payments/:id/pay,
- *                  GET /stats/overview, client render.
+ *                  GET /bills/payments, GET /stats/overview, client render.
  */
 import { test, expect } from '@playwright/test';
 import { loginNewUser, createBillViaApi, syncPaymentsViaApi } from './helpers';
@@ -53,4 +54,16 @@ test('dashboard renders summary, trend chart and attention link after a partial 
     'href',
     `/dashboard/payments?month=${month}`,
   );
+
+  // Assert: the mini-calendar renders and links to the current month
+  const miniCalendar = page.getByTestId('dashboard-mini-calendar');
+  await expect(miniCalendar).toBeVisible();
+  await expect(miniCalendar).toHaveAttribute(
+    'href',
+    `/dashboard/payments?month=${month}`,
+  );
+
+  // Assert: the forecast series shows up in the trend chart legend, because
+  // the bill created above is active and recurring.
+  await expect(page.getByTestId('trend-legend-forecast')).toBeVisible();
 });

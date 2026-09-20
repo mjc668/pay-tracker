@@ -6,7 +6,7 @@ import { useTranslations, useLocale } from "next-intl";
 import type { PaymentInstanceOut } from "@/lib/payments-api";
 import { deletePaymentEvent, revertPay } from "@/lib/payments-api";
 
-const STATUS_STYLES: Record<string, string> = {
+export const STATUS_STYLES: Record<string, string> = {
   upcoming:
     "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   overdue:

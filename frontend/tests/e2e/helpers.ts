@@ -38,11 +38,25 @@ export async function loginNewUser(page: Page): Promise<{ email: string; passwor
   return { email, password };
 }
 
+export interface BillOverrides {
+  category?: string;
+  frequency?: string;
+  amount?: string;
+  currency?: string;
+  due_day?: number;
+  is_paused?: boolean;
+}
+
 /**
  * Creates a bill via the backend API. Requires an authenticated page context
- * (call loginNewUser first).
+ * (call loginNewUser first). Defaults to a monthly 99.99 PLN utilities bill
+ * due on the 15th; pass overrides to vary category, state, etc.
  */
-export async function createBillViaApi(page: Page, name: string): Promise<number> {
+export async function createBillViaApi(
+  page: Page,
+  name: string,
+  overrides: BillOverrides = {},
+): Promise<number> {
   const res = await page.request.post(`${API}/bills`, {
     data: {
       name,
@@ -52,6 +66,7 @@ export async function createBillViaApi(page: Page, name: string): Promise<number
       currency: 'PLN',
       due_day: 15,
       is_paused: false,
+      ...overrides,
     },
     headers: { 'Content-Type': 'application/json' },
   });

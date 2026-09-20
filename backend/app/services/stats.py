@@ -12,20 +12,29 @@ from decimal import Decimal
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
-from app.models.bill import BillCategory, BillTemplate, PaymentInstance, PaymentStatus
+from app.models.bill import (
+    BillCategory,
+    BillFrequency,
+    BillTemplate,
+    PaymentInstance,
+    PaymentStatus,
+)
 from app.models.payment import Payment
 from app.models.user import User
 from app.schemas.stats import (
     AttentionItem,
     CategoryStat,
+    ForecastPoint,
     StatsOverviewOut,
     StatsSummary,
     TrendPoint,
 )
+from app.services.recurrence import _bill_active_in_period
 
 DEFAULT_CURRENCY = "PLN"
 ATTENTION_LIMIT = 10
 ATTENTION_WINDOW_DAYS = 30
+FORECAST_MONTHS = 6
 
 
 def _shift_period(period: str, delta: int) -> str:
@@ -157,6 +166,40 @@ def _trend(
     ]
 
 
+def _forecast(
+    db: Session, user_id: int, currency: str, month: str
+) -> list[ForecastPoint]:
+    """Expected spend for `month+1` … `month+6`, oldest first.
+
+    Eligible templates are loaded once and aggregated in Python (the same
+    recurrence helper used for generation decides which periods a template's
+    schedule covers). Existing instances never subtract from the expectation.
+    """
+    periods = [_shift_period(month, offset) for offset in range(1, FORECAST_MONTHS + 1)]
+    templates = (
+        db.query(BillTemplate)
+        .filter(
+            BillTemplate.user_id == user_id,
+            BillTemplate.is_archived.is_(False),
+            BillTemplate.is_paused.is_(False),
+            BillTemplate.frequency != BillFrequency.one_off,
+            BillTemplate.currency == currency,
+        )
+        .all()
+    )
+
+    totals = {period: Decimal("0") for period in periods}
+    for template in templates:
+        for period in periods:
+            if _bill_active_in_period(template, period):
+                totals[period] += template.amount
+
+    return [
+        ForecastPoint(period=period, expected_total=totals[period])
+        for period in periods
+    ]
+
+
 def _by_category(
     db: Session, user_id: int, currency: str, periods: list[str]
 ) -> list[CategoryStat]:
@@ -264,6 +307,7 @@ def build_stats_overview(
         other_currencies=other_currencies,
         summary=_summary(db, user.id, currency, month, today),
         trend=_trend(db, user.id, currency, periods),
+        forecast=_forecast(db, user.id, currency, month),
         by_category=_by_category(db, user.id, currency, periods),
         attention=_attention(db, user.id, currency, today),
     )

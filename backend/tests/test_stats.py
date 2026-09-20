@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.bill import PaymentInstance, PaymentStatus
+from app.models.bill import BillTemplate, PaymentInstance, PaymentStatus
 from tests.conftest import auth, register_and_login
 
 _BILL = {
@@ -285,6 +285,131 @@ def test_trend_buckets_payments_by_paid_on_oldest_first(client_db):
     assert _dec(by_period[previous]["due_total"]) == Decimal("100.00")
     assert _dec(by_period[current]["paid_total"]) == Decimal("60.00")
     assert _dec(by_period[current]["due_total"]) == Decimal("200.00")
+
+
+# ---------------------------------------------------------------------------
+# Forecast
+# ---------------------------------------------------------------------------
+
+
+def test_forecast_six_points_oldest_first_from_requested_month(client):
+    token = register_and_login(client, "stats_forecast_window@test.com")
+
+    data = _overview(client, token, "?month=2026-01&months=1")
+    assert data["months"] == 1
+    assert [point["period"] for point in data["forecast"]] == [
+        "2026-02",
+        "2026-03",
+        "2026-04",
+        "2026-05",
+        "2026-06",
+        "2026-07",
+    ]
+    assert all(_dec(point["expected_total"]) == 0 for point in data["forecast"])
+
+
+def test_forecast_monthly_contributes_every_month_and_ignores_instances(client_db):
+    client, db = client_db
+    token = register_and_login(client, "stats_forecast_monthly@test.com")
+    current = date.today().strftime("%Y-%m")
+
+    bill_id = _create_bill(client, token, {"amount": "100.00"})
+    # A pre-existing (or generated) instance must not subtract from the expectation.
+    _insert_instance(
+        db,
+        bill_id,
+        period=_shift(current, 1),
+        due_date=_day_in(_shift(current, 1), 15),
+        amount="100.00",
+    )
+
+    forecast = _overview(client, token)["forecast"]
+    assert [point["period"] for point in forecast] == [
+        _shift(current, offset) for offset in range(1, 7)
+    ]
+    assert all(_dec(point["expected_total"]) == Decimal("100.00") for point in forecast)
+
+
+def test_forecast_quarterly_and_annual_only_on_active_periods(client_db):
+    client, db = client_db
+    token = register_and_login(client, "stats_forecast_cycle@test.com")
+    current = date.today().strftime("%Y-%m")
+
+    _create_bill(
+        client,
+        token,
+        {"name": "Quarterly", "frequency": "quarterly", "amount": "30.00"},
+    )
+    annual_id = _create_bill(
+        client, token, {"name": "Annual", "frequency": "annual", "amount": "120.00"}
+    )
+    # Annual bills created through the API are anchored in the future; move the
+    # anchor back 11 months so '+1' is a recurrence boundary.
+    db.query(BillTemplate).filter(BillTemplate.id == annual_id).update(
+        {"start_period": _shift(current, -11)}
+    )
+    db.commit()
+
+    forecast = _overview(client, token)["forecast"]
+    assert [point["period"] for point in forecast] == [
+        _shift(current, offset) for offset in range(1, 7)
+    ]
+    expected = {
+        1: Decimal("120.00"),  # annual boundary
+        2: Decimal("0"),
+        3: Decimal("30.00"),  # quarterly (anchor +3)
+        4: Decimal("0"),
+        5: Decimal("0"),
+        6: Decimal("30.00"),  # quarterly (anchor +6)
+    }
+    for offset, value in expected.items():
+        point = forecast[offset - 1]
+        assert _dec(point["expected_total"]) == value, point
+
+
+def test_forecast_excludes_paused_archived_and_one_off(client_db):
+    client, db = client_db
+    token = register_and_login(client, "stats_forecast_excluded@test.com")
+    current = date.today().strftime("%Y-%m")
+
+    _create_bill(client, token, {"name": "Active", "amount": "10.00"})
+    _create_bill(
+        client, token, {"name": "Paused", "amount": "100.00", "is_paused": True}
+    )
+    archived = _create_bill(client, token, {"name": "Archived", "amount": "1000.00"})
+    _create_bill(
+        client,
+        token,
+        {"name": "One-off", "amount": "10000.00", "frequency": "one_off"},
+    )
+
+    r = client.post(f"/bills/{archived}/archive", headers=auth(token))
+    assert r.status_code == 204, r.text
+
+    forecast = _overview(client, token)["forecast"]
+    assert [point["period"] for point in forecast] == [
+        _shift(current, offset) for offset in range(1, 7)
+    ]
+    assert all(_dec(point["expected_total"]) == Decimal("10.00") for point in forecast)
+
+
+def test_forecast_only_counts_primary_currency(client):
+    token = register_and_login(client, "stats_forecast_currency@test.com")
+
+    # Two EUR templates make EUR the primary currency; the PLN bill is excluded.
+    _create_bill(
+        client, token, {"name": "EUR one", "currency": "EUR", "amount": "5.00"}
+    )
+    _create_bill(
+        client, token, {"name": "EUR two", "currency": "EUR", "amount": "5.00"}
+    )
+    _create_bill(client, token, {"name": "PLN", "currency": "PLN", "amount": "999.00"})
+
+    data = _overview(client, token)
+    assert data["currency"] == "EUR"
+    assert all(
+        _dec(point["expected_total"]) == Decimal("10.00") for point in data["forecast"]
+    )
 
 
 # ---------------------------------------------------------------------------

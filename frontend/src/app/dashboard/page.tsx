@@ -5,31 +5,57 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import { fetchStatsOverview, type StatsOverview } from "@/lib/stats-api";
+import {
+  fetchPayments,
+  type PaymentInstanceOut,
+} from "@/lib/payments-api";
 import { SessionExpiredError } from "@/lib/api";
 import SummaryCards from "@/components/dashboard/SummaryCards";
 import SpendTrendChart from "@/components/dashboard/SpendTrendChart";
 import CategoryBars from "@/components/dashboard/CategoryBars";
 import AttentionList from "@/components/dashboard/AttentionList";
+import MiniCalendar from "@/components/dashboard/MiniCalendar";
 
 function parseAmount(value: string): number {
   const parsed = parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function getCurrentMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getTodayKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 export default function DashboardPage() {
   const t = useTranslations("Dashboard");
   const locale = useLocale();
   const [stats, setStats] = useState<StatsOverview | null>(null);
+  const [payments, setPayments] = useState<PaymentInstanceOut[] | null>(null);
+  const [paymentsMonth, setPaymentsMonth] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    fetchStatsOverview()
-      .then((data) => {
+    const month = getCurrentMonth();
+    Promise.all([
+      fetchStatsOverview(),
+      fetchPayments(month).catch((err: unknown) => {
+        if (err instanceof SessionExpiredError) throw err;
+        return null;
+      }),
+    ])
+      .then(([statsData, paymentsData]) => {
         if (!cancelled) {
-          setStats(data);
+          setStats(statsData);
+          setPayments(paymentsData);
+          setPaymentsMonth(paymentsData !== null ? month : null);
           setLoadError(null);
           setLoading(false);
         }
@@ -51,7 +77,8 @@ export default function DashboardPage() {
     stats.summary.total_count === 0 &&
     !stats.trend.some(
       (point) => parseAmount(point.paid_total) > 0 || parseAmount(point.due_total) > 0,
-    );
+    ) &&
+    !stats.forecast.some((point) => parseAmount(point.expected_total) > 0);
 
   const monthLabel =
     stats !== null
@@ -139,6 +166,15 @@ export default function DashboardPage() {
               {monthLabel}
             </h2>
             <SummaryCards summary={stats.summary} currency={stats.currency} />
+            {payments !== null && paymentsMonth !== null && (
+              <div className="mt-4 max-w-xs">
+                <MiniCalendar
+                  month={paymentsMonth}
+                  instances={payments}
+                  todayStr={getTodayKey()}
+                />
+              </div>
+            )}
           </section>
 
           {/* Spend trend */}
@@ -146,7 +182,11 @@ export default function DashboardPage() {
             <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
               {t("trendTitle")}
             </h2>
-            <SpendTrendChart trend={stats.trend} currency={stats.currency} />
+            <SpendTrendChart
+              trend={stats.trend}
+              forecast={stats.forecast}
+              currency={stats.currency}
+            />
           </section>
 
           {/* Category breakdown */}

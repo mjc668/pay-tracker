@@ -68,6 +68,7 @@
         "trendAriaLabel": "Diagramm zum Ausgabenverlauf",
         "trendPaid": "Bezahlt",
         "trendDue": "Fällig",
+        "trendForecast": "Prognose",
         "trendEmpty": "Noch keine Ausgabenhistorie.",
         "categoryTitle": "Nach Kategorie",
         "categoryEmpty": "Keine Kategorieausgaben in diesem Zeitraum.",
@@ -80,7 +81,9 @@
         "attentionRemaining": "Offen {amount}",
         "emptyTitle": "Noch keine Rechnungen",
         "emptyDesc": "Fügen Sie Ihre erste Rechnung hinzu, um Ausgaben zu verfolgen.",
-        "emptyCta": "Erste Rechnung hinzufügen"
+        "emptyCta": "Erste Rechnung hinzufügen",
+        "miniCalendarTitle": "Kalender",
+        "miniCalendarLinkLabel": "Zahlungen für {month} anzeigen"
     },
     "BillsPage": {
         "title": "Ihre Rechnungen",
@@ -92,7 +95,30 @@
         "addFirstBill": "Erste Rechnung hinzufügen",
         "viewArchive": "Archivierte Rechnungen",
         "collapseAll": "Alle einklappen",
-        "expandAll": "Alle ausklappen"
+        "expandAll": "Alle ausklappen",
+        "generatePayments": "Zahlungen generieren",
+        "filterCategory": "Kategorie",
+        "filterState": "Status",
+        "filterName": "Suche",
+        "filterAllCategories": "Alle Kategorien",
+        "filterAllStates": "Alle",
+        "filterActive": "Aktiv",
+        "filterPaused": "Pausiert",
+        "searchPlaceholder": "Nach Name suchen…",
+        "clearFilters": "Filter zurücksetzen",
+        "noMatches": "Keine Rechnungen entsprechen diesen Filtern",
+        "generateDialog": {
+            "title": "Zahlungen generieren",
+            "description": "Zukünftige Zahlungseinträge für wiederkehrende Rechnungen erstellen.",
+            "monthsLabel": "Monate im Voraus",
+            "templatesLabel": "Zu berücksichtigende Rechnungen",
+            "noEligible": "Keine aktiven wiederkehrenden Rechnungen vorhanden. Bitte zuerst eine Rechnung hinzufügen oder fortsetzen.",
+            "submit": "Generieren",
+            "submitting": "Wird generiert…",
+            "created": "Erstellt: {count, plural, =0 {keine Zahlungen} one {# Zahlung} other {# Zahlungen}}",
+            "close": "Schließen",
+            "error": "Zahlungen konnten nicht generiert werden."
+        }
     },
     "ArchivedBillsPage": {
         "backToActive": "Aktive Rechnungen",
@@ -199,7 +225,22 @@
         "summaryUpcoming": "bevorstehend",
         "summaryOverdueToday": "heute überfällig",
         "summaryOverdue": "überfällig",
-        "summaryPaid": "bezahlt"
+        "summaryPaid": "bezahlt",
+        "viewList": "Liste",
+        "viewCalendar": "Kalender",
+        "filtersStatus": "Status",
+        "filtersCategory": "Kategorie",
+        "filtersName": "Suche",
+        "filterAllStatuses": "Alle Status",
+        "filterUnpaid": "Unbezahlt",
+        "filterOverdue": "Überfällig",
+        "filterPaid": "Bezahlt",
+        "filterAllCategories": "Alle Kategorien",
+        "searchPlaceholder": "Nach Name suchen…",
+        "clearFilters": "Filter zurücksetzen",
+        "noMatches": "Keine Zahlungen entsprechen diesen Filtern",
+        "calendarLabel": "Zahlungskalender",
+        "calendarEmptyDay": "Keine Zahlungen an diesem Tag"
     },
     "PaymentRow": {
         "status": {
@@ -319,7 +360,15 @@
             "passwordTooShort": "Das Passwort muss mindestens 8 Zeichen lang sein.",
             "wrongPassword": "Das aktuelle Passwort ist falsch.",
             "emailTaken": "Diese E-Mail-Adresse ist bereits registriert.",
-            "emailAndPasswordRequired": "Bitte gib eine neue E-Mail-Adresse und dein aktuelles Passwort ein."
+            "emailAndPasswordRequired": "Bitte geben Sie eine neue E-Mail-Adresse und Ihr aktuelles Passwort ein.",
+            "defaultCurrencyLabel": "Standardwährung",
+            "defaultCurrencyHint": "Vorausgewählte Währung beim Anlegen einer neuen Rechnung.",
+            "defaultCurrencyNone": "Nicht festgelegt",
+            "defaultCurrencyCustom": "Andere…",
+            "defaultCurrencyCustomAriaLabel": "Benutzerdefinierter Währungscode",
+            "defaultCurrencyPlaceholder": "z. B. CHF",
+            "defaultCurrencyInvalid": "Geben Sie einen Währungscode mit 2–10 Zeichen ein (Buchstaben und Ziffern).",
+            "defaultCurrencySaveFailed": "Die Standardwährung konnte nicht gespeichert werden."
         },
         "emailNotifications": {
             "title": "E-Mail-Benachrichtigungen",

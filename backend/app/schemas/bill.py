@@ -108,6 +108,17 @@ class HasDeletedFutureOut(BaseModel):
     has_deleted_future: bool
 
 
+class GenerateInstancesRequest(BaseModel):
+    months: int = Field(6, ge=1, le=24)
+    bill_ids: list[int] | None = None
+
+
+class GenerateInstancesOut(BaseModel):
+    created: int
+    bill_count: int
+    months: int
+
+
 class BackupTemplate(BaseModel):
     id: int
     name: str

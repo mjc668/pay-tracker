@@ -68,6 +68,7 @@
         "trendAriaLabel": "Wykres trendu wydatków",
         "trendPaid": "Zapłacone",
         "trendDue": "Do zapłaty",
+        "trendForecast": "Prognoza",
         "trendEmpty": "Brak historii wydatków.",
         "categoryTitle": "Według kategorii",
         "categoryEmpty": "Brak wydatków w kategoriach w tym okresie.",
@@ -80,7 +81,9 @@
         "attentionRemaining": "Pozostało {amount}",
         "emptyTitle": "Brak rachunków",
         "emptyDesc": "Dodaj pierwszy rachunek, aby zacząć śledzić wydatki.",
-        "emptyCta": "Dodaj pierwszy rachunek"
+        "emptyCta": "Dodaj pierwszy rachunek",
+        "miniCalendarTitle": "Kalendarz",
+        "miniCalendarLinkLabel": "Zobacz płatności za {month}"
     },
     "BillsPage": {
         "title": "Twoje rachunki",
@@ -92,7 +95,30 @@
         "addFirstBill": "Dodaj pierwszy rachunek",
         "viewArchive": "Zarchiwizowane rachunki",
         "collapseAll": "Zwiń wszystko",
-        "expandAll": "Rozwiń wszystko"
+        "expandAll": "Rozwiń wszystko",
+        "generatePayments": "Generuj płatności",
+        "filterCategory": "Kategoria",
+        "filterState": "Stan",
+        "filterName": "Szukaj",
+        "filterAllCategories": "Wszystkie kategorie",
+        "filterAllStates": "Wszystkie",
+        "filterActive": "Aktywne",
+        "filterPaused": "Wstrzymane",
+        "searchPlaceholder": "Szukaj po nazwie…",
+        "clearFilters": "Wyczyść filtry",
+        "noMatches": "Brak rachunków pasujących do filtrów",
+        "generateDialog": {
+            "title": "Generuj płatności",
+            "description": "Utwórz przyszłe wpisy płatności dla rachunków cyklicznych.",
+            "monthsLabel": "Miesiące do przodu",
+            "templatesLabel": "Rachunki do uwzględnienia",
+            "noEligible": "Brak aktywnych rachunków cyklicznych. Najpierw dodaj rachunek lub wznów wstrzymany.",
+            "submit": "Generuj",
+            "submitting": "Generowanie…",
+            "created": "Utworzono {count, plural, =0 {brak płatności} one {# płatność} few {# płatności} many {# płatności} other {# płatności}}",
+            "close": "Zamknij",
+            "error": "Nie udało się wygenerować płatności."
+        }
     },
     "ArchivedBillsPage": {
         "backToActive": "Aktywne rachunki",
@@ -199,7 +225,22 @@
         "summaryUpcoming": "nadchodzące",
         "summaryOverdueToday": "zaległe dzisiaj",
         "summaryOverdue": "zaległe",
-        "summaryPaid": "opłacone"
+        "summaryPaid": "opłacone",
+        "viewList": "Lista",
+        "viewCalendar": "Kalendarz",
+        "filtersStatus": "Status",
+        "filtersCategory": "Kategoria",
+        "filtersName": "Szukaj",
+        "filterAllStatuses": "Wszystkie statusy",
+        "filterUnpaid": "Nieopłacone",
+        "filterOverdue": "Zaległe",
+        "filterPaid": "Opłacone",
+        "filterAllCategories": "Wszystkie kategorie",
+        "searchPlaceholder": "Szukaj po nazwie…",
+        "clearFilters": "Wyczyść filtry",
+        "noMatches": "Brak płatności pasujących do filtrów",
+        "calendarLabel": "Kalendarz płatności",
+        "calendarEmptyDay": "Brak płatności tego dnia"
     },
     "PaymentRow": {
         "status": {"upcoming": "Nadchodzące", "overdue": "Zaległe", "paid": "Opłacone"},
@@ -311,7 +352,15 @@
             "passwordTooShort": "Hasło musi mieć co najmniej 8 znaków.",
             "wrongPassword": "Aktualne hasło jest nieprawidłowe.",
             "emailTaken": "Ten adres e-mail jest już zarejestrowany.",
-            "emailAndPasswordRequired": "Podaj nowy adres e-mail oraz aktualne hasło."
+            "emailAndPasswordRequired": "Podaj nowy adres e-mail i aktualne hasło.",
+            "defaultCurrencyLabel": "Domyślna waluta",
+            "defaultCurrencyHint": "Waluta wstępnie wybrana podczas tworzenia nowego rachunku.",
+            "defaultCurrencyNone": "Nie ustawiono",
+            "defaultCurrencyCustom": "Inna…",
+            "defaultCurrencyCustomAriaLabel": "Niestandardowy kod waluty",
+            "defaultCurrencyPlaceholder": "np. CHF",
+            "defaultCurrencyInvalid": "Podaj kod waluty składający się z 2–10 znaków (litery i cyfry).",
+            "defaultCurrencySaveFailed": "Nie udało się zapisać domyślnej waluty."
         },
         "emailNotifications": {
             "title": "Powiadomienia e-mail",

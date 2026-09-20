@@ -2,10 +2,11 @@
 
 import { useId } from "react";
 import { useTranslations, useLocale } from "next-intl";
-import type { TrendPoint } from "@/lib/stats-api";
+import type { ForecastPoint, TrendPoint } from "@/lib/stats-api";
 
 interface Props {
   trend: TrendPoint[];
+  forecast: ForecastPoint[];
   currency: string;
 }
 
@@ -33,14 +34,18 @@ function buildTicks(max: number): number[] {
   return ticks;
 }
 
-export default function SpendTrendChart({ trend, currency }: Props) {
+export default function SpendTrendChart({ trend, forecast, currency }: Props) {
   const t = useTranslations("Dashboard");
   const locale = useLocale();
   const gradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
 
-  const hasData = trend.some(
+  const hasActuals = trend.some(
     (point) => parseAmount(point.paid_total) > 0 || parseAmount(point.due_total) > 0,
   );
+  const hasForecast = forecast.some(
+    (point) => parseAmount(point.expected_total) > 0,
+  );
+  const hasData = hasActuals || hasForecast;
 
   const formatMonth = (period: string): string => {
     const label = new Intl.DateTimeFormat(locale, { month: "short" }).format(
@@ -62,23 +67,26 @@ export default function SpendTrendChart({ trend, currency }: Props) {
     );
   }
 
-  const ticks = buildTicks(
-    Math.max(
-      ...trend.flatMap((point) => [
-        parseAmount(point.paid_total),
-        parseAmount(point.due_total),
-      ]),
-    ),
-  );
+  const actualCount = trend.length;
+  const totalCount = actualCount + forecast.length;
+  const values = [
+    ...trend.flatMap((point) => [
+      parseAmount(point.paid_total),
+      parseAmount(point.due_total),
+    ]),
+    ...forecast.map((point) => parseAmount(point.expected_total)),
+  ];
+
+  const ticks = buildTicks(values.length > 0 ? Math.max(...values) : 0);
   const top = ticks[ticks.length - 1];
   const plotWidth = WIDTH - PADDING.left - PADDING.right;
   const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
   const bottom = PADDING.top + plotHeight;
 
   const xAt = (index: number): number =>
-    trend.length === 1
+    totalCount <= 1
       ? PADDING.left + plotWidth / 2
-      : PADDING.left + (plotWidth * index) / (trend.length - 1);
+      : PADDING.left + (plotWidth * index) / (totalCount - 1);
   const yAt = (value: number): number =>
     PADDING.top + plotHeight * (1 - value / top);
 
@@ -87,9 +95,28 @@ export default function SpendTrendChart({ trend, currency }: Props) {
       .map((point, index) => `${xAt(index)},${yAt(parseAmount(point[key]))}`)
       .join(" L ")}`;
 
-  const paidLine = linePath("paid_total");
-  const paidArea = `${paidLine} L ${xAt(trend.length - 1)},${bottom} L ${xAt(0)},${bottom} Z`;
-  const dueLine = linePath("due_total");
+  const paidLine = hasActuals ? linePath("paid_total") : null;
+  const paidArea =
+    paidLine !== null
+      ? `${paidLine} L ${xAt(actualCount - 1)},${bottom} L ${xAt(0)},${bottom} Z`
+      : null;
+  const dueLine = hasActuals ? linePath("due_total") : null;
+  const forecastLine = hasForecast
+    ? `M ${forecast
+        .map(
+          (point, index) =>
+            `${xAt(actualCount + index)},${yAt(parseAmount(point.expected_total))}`,
+        )
+        .join(" L ")}`
+    : null;
+  const boundaryX =
+    hasActuals && hasForecast
+      ? (xAt(actualCount - 1) + xAt(actualCount)) / 2
+      : null;
+  const xLabels = [
+    ...trend.map((point) => point.period),
+    ...forecast.map((point) => point.period),
+  ];
 
   const tickFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
 
@@ -137,83 +164,147 @@ export default function SpendTrendChart({ trend, currency }: Props) {
           </g>
         ))}
 
+        {/* Present boundary between actuals and forecast */}
+        {boundaryX !== null && (
+          <line
+            x1={boundaryX}
+            y1={PADDING.top}
+            x2={boundaryX}
+            y2={bottom}
+            stroke="currentColor"
+            strokeWidth={1.5}
+            className="text-slate-300 dark:text-slate-600"
+          />
+        )}
+
         {/* Due line (dashed) */}
-        <path
-          d={dueLine}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeDasharray="6 4"
-          className="text-slate-400 dark:text-slate-500"
-        />
+        {dueLine !== null && (
+          <path
+            d={dueLine}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeDasharray="6 4"
+            className="text-slate-400 dark:text-slate-500"
+          />
+        )}
 
         {/* Paid area + line */}
-        <path d={paidArea} fill={`url(#${gradientId})`} />
-        <path
-          d={paidLine}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2.5}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          className="text-emerald-500"
-        />
+        {paidArea !== null && <path d={paidArea} fill={`url(#${gradientId})`} />}
+        {paidLine !== null && (
+          <path
+            d={paidLine}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            className="text-emerald-500"
+          />
+        )}
+
+        {/* Forecast line (dashed amber) */}
+        {forecastLine !== null && (
+          <path
+            d={forecastLine}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeDasharray="6 4"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            className="text-amber-500"
+          />
+        )}
+
+        {/* Forecast dots with native tooltips */}
+        {hasForecast &&
+          forecast.map((point, index) => (
+            <circle
+              key={`forecast-${point.period}`}
+              cx={xAt(actualCount + index)}
+              cy={yAt(parseAmount(point.expected_total))}
+              r={3}
+              fill="currentColor"
+              className="text-amber-500"
+            >
+              <title>
+                {`${formatMonth(point.period)} · ${t("trendForecast")}: ${amountFormatter.format(parseAmount(point.expected_total))} ${currency}`}
+              </title>
+            </circle>
+          ))}
 
         {/* Paid dots with native tooltips */}
-        {trend.map((point, index) => (
-          <circle
-            key={`paid-${point.period}`}
-            cx={xAt(index)}
-            cy={yAt(parseAmount(point.paid_total))}
-            r={3.5}
-            fill="currentColor"
-            className="text-emerald-500"
-          >
-            <title>
-              {`${formatMonth(point.period)} · ${t("trendPaid")}: ${amountFormatter.format(parseAmount(point.paid_total))} ${currency}`}
-            </title>
-          </circle>
-        ))}
+        {hasActuals &&
+          trend.map((point, index) => (
+            <circle
+              key={`paid-${point.period}`}
+              cx={xAt(index)}
+              cy={yAt(parseAmount(point.paid_total))}
+              r={3.5}
+              fill="currentColor"
+              className="text-emerald-500"
+            >
+              <title>
+                {`${formatMonth(point.period)} · ${t("trendPaid")}: ${amountFormatter.format(parseAmount(point.paid_total))} ${currency}`}
+              </title>
+            </circle>
+          ))}
 
         {/* Due dots with native tooltips */}
-        {trend.map((point, index) => (
-          <circle
-            key={`due-${point.period}`}
-            cx={xAt(index)}
-            cy={yAt(parseAmount(point.due_total))}
-            r={2.5}
-            fill="currentColor"
-            className="text-slate-400 dark:text-slate-500"
-          >
-            <title>
-              {`${formatMonth(point.period)} · ${t("trendDue")}: ${amountFormatter.format(parseAmount(point.due_total))} ${currency}`}
-            </title>
-          </circle>
-        ))}
+        {hasActuals &&
+          trend.map((point, index) => (
+            <circle
+              key={`due-${point.period}`}
+              cx={xAt(index)}
+              cy={yAt(parseAmount(point.due_total))}
+              r={2.5}
+              fill="currentColor"
+              className="text-slate-400 dark:text-slate-500"
+            >
+              <title>
+                {`${formatMonth(point.period)} · ${t("trendDue")}: ${amountFormatter.format(parseAmount(point.due_total))} ${currency}`}
+              </title>
+            </circle>
+          ))}
 
-        {/* X-axis month labels */}
-        {trend.map((point, index) => (
+        {/* X-axis month labels — rotated so all 12 fit on mobile widths */}
+        {xLabels.map((period, index) => (
           <text
-            key={`label-${point.period}`}
+            key={`label-${index}-${period}`}
             x={xAt(index)}
-            y={HEIGHT - 10}
-            textAnchor="middle"
+            y={HEIGHT - 8}
+            textAnchor="end"
+            transform={`rotate(-45 ${xAt(index)} ${HEIGHT - 8})`}
             className="fill-slate-400 text-[11px] dark:fill-slate-500"
           >
-            {formatMonth(point.period)}
+            {formatMonth(period)}
           </text>
         ))}
       </svg>
 
-      <div className="mt-1 flex items-center gap-5 text-xs text-slate-500 dark:text-slate-400">
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-          {t("trendPaid")}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-0 w-4 border-t-2 border-dashed border-slate-400 dark:border-slate-500" />
-          {t("trendDue")}
-        </span>
+      <div className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+        {hasActuals && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+            {t("trendPaid")}
+          </span>
+        )}
+        {hasActuals && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-0 w-4 border-t-2 border-dashed border-slate-400 dark:border-slate-500" />
+            {t("trendDue")}
+          </span>
+        )}
+        {hasForecast && (
+          <span
+            data-testid="trend-legend-forecast"
+            className="flex items-center gap-1.5"
+          >
+            <span className="h-0 w-4 border-t-2 border-dashed border-amber-500" />
+            {t("trendForecast")}
+          </span>
+        )}
       </div>
     </div>
   );

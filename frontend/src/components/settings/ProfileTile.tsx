@@ -3,8 +3,29 @@
 import { User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { changeEmail, changePassword, type UserProfile } from "@/lib/user-api";
+import {
+  changeEmail,
+  changePassword,
+  updateMe,
+  type UserProfile,
+} from "@/lib/user-api";
 import { Tile } from "./Tile";
+
+const CURRENCY_PRESETS = ["PLN", "EUR", "USD", "AUD"] as const;
+
+type CurrencyChoice = (typeof CURRENCY_PRESETS)[number] | "custom" | "none";
+
+function deriveCurrencyState(value: string | null | undefined): {
+  choice: CurrencyChoice;
+  custom: string;
+} {
+  const currency = value ?? "";
+  if (!currency) return { choice: "none", custom: "" };
+  if ((CURRENCY_PRESETS as readonly string[]).includes(currency)) {
+    return { choice: currency as CurrencyChoice, custom: "" };
+  }
+  return { choice: "custom", custom: currency };
+}
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 outline-none transition-all focus:border-green-500 focus:ring-2 focus:ring-green-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:focus:border-green-600 dark:focus:ring-green-900/40";
@@ -41,9 +62,23 @@ export function ProfileTile({
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isPasswordSaving, setIsPasswordSaving] = useState(false);
 
+  const initialCurrency = deriveCurrencyState(profile.default_currency);
+  const [currencyChoice, setCurrencyChoice] = useState<CurrencyChoice>(initialCurrency.choice);
+  const [customCurrency, setCustomCurrency] = useState(initialCurrency.custom);
+  const [currencyError, setCurrencyError] = useState<string | null>(null);
+  const [isCurrencySaving, setIsCurrencySaving] = useState(false);
+
+  const resolvedCurrency =
+    currencyChoice === "none"
+      ? ""
+      : currencyChoice === "custom"
+        ? customCurrency.trim().toUpperCase()
+        : currencyChoice;
+  const isCurrencyDirty = resolvedCurrency !== (profile.default_currency ?? "");
+
   const isEmailDirty = emailInput.length > 0 || emailPassword.length > 0;
   const isPasswordDirty = curPassword.length > 0 || newPassword.length > 0;
-  const isDirty = isEmailDirty || isPasswordDirty;
+  const isDirty = isEmailDirty || isPasswordDirty || isCurrencyDirty;
 
   useEffect(() => {
     onDirtyChange(isDirty);
@@ -88,6 +123,35 @@ export function ProfileTile({
       setPasswordError(tp("profile.wrongPassword"));
     } finally {
       setIsPasswordSaving(false);
+    }
+  }
+
+  function cancelCurrency() {
+    const derived = deriveCurrencyState(profile.default_currency);
+    setCurrencyChoice(derived.choice);
+    setCustomCurrency(derived.custom);
+    setCurrencyError(null);
+  }
+
+  async function saveCurrency() {
+    if (currencyChoice === "custom" && !/^[A-Z0-9]{2,10}$/.test(resolvedCurrency)) {
+      setCurrencyError(tp("profile.defaultCurrencyInvalid"));
+      return;
+    }
+    setCurrencyError(null);
+    setIsCurrencySaving(true);
+    try {
+      const updated = await updateMe({
+        default_currency: resolvedCurrency || null,
+      });
+      onProfileUpdate(updated);
+      const derived = deriveCurrencyState(updated.default_currency);
+      setCurrencyChoice(derived.choice);
+      setCustomCurrency(derived.custom);
+    } catch {
+      setCurrencyError(tp("profile.defaultCurrencySaveFailed"));
+    } finally {
+      setIsCurrencySaving(false);
     }
   }
 
@@ -178,6 +242,61 @@ export function ProfileTile({
               disabled={isPasswordSaving}
               className={btnCancel}
             >
+              {tp("cancel")}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <hr className="border-slate-200 dark:border-slate-700" />
+
+      <div className="space-y-2">
+        <label
+          htmlFor="default-currency"
+          className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+        >
+          {tp("profile.defaultCurrencyLabel")}
+        </label>
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          {tp("profile.defaultCurrencyHint")}
+        </p>
+        <div className="flex gap-2">
+          <select
+            id="default-currency"
+            value={currencyChoice}
+            onChange={(e) => setCurrencyChoice(e.target.value as CurrencyChoice)}
+            disabled={isCurrencySaving}
+            className={inputClass}
+          >
+            <option value="none">{tp("profile.defaultCurrencyNone")}</option>
+            {CURRENCY_PRESETS.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+            <option value="custom">{tp("profile.defaultCurrencyCustom")}</option>
+          </select>
+          {currencyChoice === "custom" && (
+            <div className="w-28 shrink-0">
+              <input
+                aria-label={tp("profile.defaultCurrencyCustomAriaLabel")}
+                value={customCurrency}
+                onChange={(e) => setCustomCurrency(e.target.value.toUpperCase())}
+                placeholder={tp("profile.defaultCurrencyPlaceholder")}
+                maxLength={10}
+                disabled={isCurrencySaving}
+                className={inputClass}
+              />
+            </div>
+          )}
+        </div>
+        {currencyError && (
+          <p className="text-sm text-red-600 dark:text-red-400">{currencyError}</p>
+        )}
+        {isCurrencyDirty && (
+          <div className="flex gap-2 pt-1">
+            <button onClick={saveCurrency} disabled={isCurrencySaving} className={btnSave}>
+              {isCurrencySaving ? tp("saving") : tp("save")}
+            </button>
+            <button onClick={cancelCurrency} disabled={isCurrencySaving} className={btnCancel}>
               {tp("cancel")}
             </button>
           </div>

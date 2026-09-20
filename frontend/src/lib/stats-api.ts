@@ -19,6 +19,11 @@ export interface TrendPoint {
   due_total: string;
 }
 
+export interface ForecastPoint {
+  period: string;
+  expected_total: string;
+}
+
 export interface CategoryStat {
   category: BillCategory;
   paid_total: string;
@@ -43,6 +48,7 @@ export interface StatsOverview {
   other_currencies: string[];
   summary: StatsSummary;
   trend: TrendPoint[];
+  forecast: ForecastPoint[];
   by_category: CategoryStat[];
   attention: AttentionItem[];
 }

@@ -27,6 +27,9 @@ class User(Base):
     language_preference: Mapped[str | None] = mapped_column(
         String(5), nullable=True, default=None
     )
+    default_currency: Mapped[str | None] = mapped_column(
+        String(10), nullable=True, default=None
+    )
     email_reminders_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
