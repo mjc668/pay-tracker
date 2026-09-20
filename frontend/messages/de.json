@@ -37,6 +37,7 @@
         "smtpNotConfigured": "E-Mail ist nicht konfiguriert. Überprüfen Sie die SMTP-Konfiguration."
     },
     "DashboardLayout": {
+        "dashboard": "Übersicht",
         "payments": "Zahlungen",
         "bills": "Rechnungen",
         "archived": "Archiv",
