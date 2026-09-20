@@ -1,89 +1,171 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Receipt, Archive, CreditCard, Settings } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { Plus } from "lucide-react";
+import { useTranslations, useLocale } from "next-intl";
+import { fetchStatsOverview, type StatsOverview } from "@/lib/stats-api";
+import { SessionExpiredError } from "@/lib/api";
+import SummaryCards from "@/components/dashboard/SummaryCards";
+import SpendTrendChart from "@/components/dashboard/SpendTrendChart";
+import CategoryBars from "@/components/dashboard/CategoryBars";
+import AttentionList from "@/components/dashboard/AttentionList";
+
+function parseAmount(value: string): number {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 export default function DashboardPage() {
   const t = useTranslations("Dashboard");
+  const locale = useLocale();
+  const [stats, setStats] = useState<StatsOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchStatsOverview()
+      .then((data) => {
+        if (!cancelled) {
+          setStats(data);
+          setLoadError(null);
+          setLoading(false);
+        }
+      })
+      .catch((err: unknown) => {
+        if (err instanceof SessionExpiredError) return;
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : t("loadError"));
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey, t]);
+
+  const isEmpty =
+    stats !== null &&
+    stats.summary.total_count === 0 &&
+    !stats.trend.some(
+      (point) => parseAmount(point.paid_total) > 0 || parseAmount(point.due_total) > 0,
+    );
+
+  const monthLabel =
+    stats !== null
+      ? (() => {
+          const label = new Intl.DateTimeFormat(locale, {
+            month: "long",
+            year: "numeric",
+          }).format(new Date(`${stats.month}-01T00:00:00`));
+          return label.charAt(0).toUpperCase() + label.slice(1);
+        })()
+      : null;
+
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
-      <h1 className="text-2xl font-semibold text-slate-800 dark:text-slate-100 mb-1">
-        {t("title")}
-      </h1>
-      <p className="text-slate-500 dark:text-slate-400 mb-8">
-        {t("subtitle")}
-      </p>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Link
-          href="/dashboard/payments"
-          className="group flex items-start gap-4 rounded-xl border border-slate-200 border-l-4 border-l-emerald-400 bg-white p-5 shadow-sm transition-all hover:border-l-emerald-500 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:border-l-emerald-500 dark:hover:bg-slate-700/50"
-        >
-          <div className="rounded-lg bg-emerald-100 p-2.5 text-emerald-600 transition-colors group-hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400">
-            <CreditCard size={20} />
-          </div>
-          <div>
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              {t("paymentsTitle")}
-            </h2>
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-              {t("paymentsDesc")}
-            </p>
-          </div>
-        </Link>
-
-        <Link
-          href="/dashboard/bills"
-          className="group flex items-start gap-4 rounded-xl border border-slate-200 border-l-4 border-l-blue-400 bg-white p-5 shadow-sm transition-all hover:border-l-blue-500 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:border-l-blue-500 dark:hover:bg-slate-700/50"
-        >
-          <div className="rounded-lg bg-blue-100 p-2.5 text-blue-600 transition-colors group-hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-400">
-            <Receipt size={20} />
-          </div>
-          <div>
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              {t("manageBillsTitle")}
-            </h2>
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-              {t("manageBillsDesc")}
-            </p>
-          </div>
-        </Link>
-
-        <Link
-          href="/dashboard/bills/archived"
-          className="group flex items-start gap-4 rounded-xl border border-slate-200 border-l-4 border-l-slate-300 bg-white p-5 shadow-sm transition-all hover:border-l-slate-400 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:border-l-slate-600 dark:hover:bg-slate-700/50"
-        >
-          <div className="rounded-lg bg-slate-100 p-2.5 text-slate-500 transition-colors group-hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400">
-            <Archive size={20} />
-          </div>
-          <div>
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              {t("archivedBillsTitle")}
-            </h2>
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-              {t("archivedBillsDesc")}
-            </p>
-          </div>
-        </Link>
-
-        <Link
-          href="/dashboard/settings"
-          className="group flex items-start gap-4 rounded-xl border border-slate-200 border-l-4 border-l-violet-300 bg-white p-5 shadow-sm transition-all hover:border-l-violet-400 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:border-l-violet-600 dark:hover:bg-slate-700/50"
-        >
-          <div className="rounded-lg bg-violet-100 p-2.5 text-violet-600 transition-colors group-hover:bg-violet-200 dark:bg-violet-900/40 dark:text-violet-400">
-            <Settings size={20} />
-          </div>
-          <div>
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              {t("settingsTitle")}
-            </h2>
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-              {t("settingsDesc")}
-            </p>
-          </div>
-        </Link>
+    <div className="mx-auto max-w-4xl px-4 py-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-slate-800 dark:text-slate-100 mb-1">
+          {t("title")}
+        </h1>
+        <p className="text-slate-500 dark:text-slate-400">{t("subtitle")}</p>
       </div>
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="h-28 rounded-xl bg-slate-200 dark:bg-slate-700 animate-pulse"
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Error banner */}
+      {!loading && loadError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+          <span>{loadError}</span>
+          <button
+            onClick={() => {
+              setLoading(true);
+              setLoadError(null);
+              setRefreshKey((k) => k + 1);
+            }}
+            className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 shadow-sm transition-all hover:bg-red-50 dark:border-red-700 dark:bg-slate-800 dark:text-red-400 dark:hover:bg-red-900/30"
+          >
+            {t("retry")}
+          </button>
+        </div>
+      )}
+
+      {!loading && !loadError && stats !== null && (
+        <div className="flex flex-col gap-8">
+          {stats.other_currencies.length > 0 && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
+              {t("currencyNote", {
+                currency: stats.currency,
+                others: stats.other_currencies.join(", "),
+              })}
+            </p>
+          )}
+
+          {isEmpty && (
+            <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 px-6 py-12 text-center dark:border-slate-700">
+              <div className="mb-3 rounded-full bg-green-100 p-4 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                <Plus size={28} />
+              </div>
+              <p className="font-medium text-slate-700 dark:text-slate-300">
+                {t("emptyTitle")}
+              </p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {t("emptyDesc")}
+              </p>
+              <Link
+                href="/dashboard/bills"
+                className="mt-4 rounded-xl border border-green-700 bg-green-700 px-5 py-2 text-sm font-medium text-white shadow-sm transition-all hover:border-green-800 hover:bg-green-800"
+              >
+                {t("emptyCta")}
+              </Link>
+            </div>
+          )}
+
+          {/* Monthly summary */}
+          <section>
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+              {monthLabel}
+            </h2>
+            <SummaryCards summary={stats.summary} currency={stats.currency} />
+          </section>
+
+          {/* Spend trend */}
+          <section>
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+              {t("trendTitle")}
+            </h2>
+            <SpendTrendChart trend={stats.trend} currency={stats.currency} />
+          </section>
+
+          {/* Category breakdown */}
+          <section>
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+              {t("categoryTitle")}
+            </h2>
+            <CategoryBars categories={stats.by_category} currency={stats.currency} />
+          </section>
+
+          {/* Attention list */}
+          <section>
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+              {t("attentionTitle")}
+            </h2>
+            <AttentionList items={stats.attention} currency={stats.currency} />
+          </section>
+        </div>
+      )}
     </div>
   );
 }

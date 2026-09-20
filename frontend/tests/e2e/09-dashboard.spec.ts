@@ -1,0 +1,56 @@
+/**
+ * Flow 9: Dashboard stats overview
+ * Risk: stats data is not rendered — the summary card ignores the recorded
+ *       partial payment, the trend chart SVG is missing, or the attention row
+ *       links to the wrong month.
+ * Real boundaries: auth, POST /bills, POST /bills/payments/:id/pay,
+ *                  GET /stats/overview, client render.
+ */
+import { test, expect } from '@playwright/test';
+import { loginNewUser, createBillViaApi, syncPaymentsViaApi } from './helpers';
+
+// Must match the amount created by createBillViaApi.
+const BILL_AMOUNT = '99.99';
+
+test('dashboard renders summary, trend chart and attention link after a partial payment', async ({
+  page,
+}) => {
+  const billName = `E2E Dashboard ${Date.now()}`;
+
+  // Setup: authenticate + create bill + sync instances via API
+  await loginNewUser(page);
+  await createBillViaApi(page, billName);
+  await syncPaymentsViaApi(page);
+
+  // Step: record a partial payment through the UI
+  await page.goto('/dashboard/payments');
+  await expect(page.getByText(billName)).toBeVisible();
+
+  const half = (parseFloat(BILL_AMOUNT) / 2).toFixed(2);
+  await page.getByRole('button', { name: 'Mark as Paid' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Amount paid').fill(half);
+  await dialog.getByRole('button', { name: 'Mark as Paid' }).click();
+  await expect(dialog).not.toBeVisible();
+
+  // Step: open the dashboard
+  await page.goto('/dashboard');
+
+  // Assert: the Paid summary card reflects the partial payment amount
+  const paidCard = page.getByTestId('summary-paid');
+  await expect(paidCard).toBeVisible();
+  await expect(paidCard).toContainText(half);
+
+  // Assert: the trend chart renders as an accessible image
+  await expect(page.getByRole('img', { name: 'Spend trend chart' })).toBeVisible();
+
+  // Assert: the attention list shows the unpaid bill and links to its period
+  const attentionRow = page.getByRole('link', { name: new RegExp(billName) });
+  await expect(attentionRow).toBeVisible();
+  const month = new Date().toISOString().slice(0, 7);
+  await expect(attentionRow).toHaveAttribute(
+    'href',
+    `/dashboard/payments?month=${month}`,
+  );
+});

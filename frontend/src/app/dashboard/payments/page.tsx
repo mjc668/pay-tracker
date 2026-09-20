@@ -166,6 +166,19 @@ function PaymentsPageInner() {
 
   const [selectedYear, setSelectedYear] = useState(currentYear);
 
+  // Deep link support: /dashboard/payments?month=YYYY-MM preselects that month.
+  // Uses window.location (not useSearchParams) to avoid a Suspense boundary.
+  useEffect(() => {
+    const monthParam = new URLSearchParams(window.location.search).get("month");
+    if (!monthParam || !/^\d{4}-\d{2}$/.test(monthParam)) return;
+    const [yearStr, monthStr] = monthParam.split("-");
+    const monthIndex = parseInt(monthStr, 10);
+    if (monthIndex < 1 || monthIndex > 12) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot post-hydration read of the browser-only deep link; a lazy initializer would risk a hydration mismatch
+    setSelectedMonth(monthParam);
+    setSelectedYear(parseInt(yearStr, 10));
+  }, []);
+
   const todayStr = getTodayStr();
 
   const activeCategories = CATEGORY_ORDER.filter((cat) =>

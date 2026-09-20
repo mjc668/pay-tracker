@@ -6,7 +6,7 @@ import CategoryCombobox from "./CategoryCombobox";
 import MonthDayCalendar from "./MonthDayCalendar";
 import type { BillCategory, BillFrequency, BillTemplateCreate } from "@/lib/bills-api";
 
-const PRESET_CURRENCIES = ["EUR", "PLN", "USD"] as const;
+const PRESET_CURRENCIES = ["EUR", "PLN", "USD", "AUD"] as const;
 
 const FREQUENCY_VALUES: BillFrequency[] = ["monthly", "every_2_months", "quarterly", "annual", "one_off"];
 
