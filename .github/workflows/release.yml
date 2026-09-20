@@ -97,6 +97,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ needs.version.outputs.value }}
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost:8010' }}
           outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/pay-tracker-frontend,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest

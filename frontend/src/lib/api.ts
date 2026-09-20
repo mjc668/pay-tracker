@@ -3,7 +3,7 @@ export interface TokenResponse {
   token_type: string;
 }
 
-export const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010";
+export const BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:8010";
 
 export class SessionExpiredError extends Error {
   constructor() {
