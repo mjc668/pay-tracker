@@ -67,16 +67,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   useEffect(() => {
-    setSessionExpiredHandler(() => {
+    setSessionExpiredHandler(async () => {
       if (loggingOutRef.current) return;
       loggingOutRef.current = true;
       sessionStorage.setItem(SESSION_EXPIRED_KEY, "1");
       setIsAuthenticated(false);
-      router.refresh();
-      router.push("/login");
+      // The token has been rejected by the backend (expired, revoked, or a
+      // pre-claims-enforcement cookie). Clear the HttpOnly cookie server-side
+      // first so the proxy stops bouncing /login → /dashboard; then hard-
+      // navigate so the fresh request goes out with the cookies already gone.
+      try {
+        await apiFetch("/auth/logout", { method: "POST" });
+      } catch {
+        // Even a failed logout must not block the redirect.
+      }
+      window.location.assign("/login");
     });
     return () => setSessionExpiredHandler(null);
-  }, [router]);
+  }, []);
 
   // Proactive expiry check: a real 401 here is already handled globally by
   // apiFetch/sessionExpiredHandler above, so this effect only needs to make

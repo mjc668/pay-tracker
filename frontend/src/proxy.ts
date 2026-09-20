@@ -26,6 +26,27 @@ function securityHeaders(): Record<string, string> {
   };
 }
 
+// Decode the JWT payload (no signature check — just the exp claim) so routing
+// decisions can tell a live cookie apart from a dead one. A signed-body
+// verification would need the secret in this process; the backend is still the
+// source of truth for actual auth, this only stops the login redirect loop.
+function readTokenExp(token: string): number | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(b64)) as { exp?: unknown };
+    return typeof payload.exp === "number" ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearAuthCookies(res: NextResponse): void {
+  res.cookies.delete("access_token");
+  res.cookies.delete("auth_logged_in");
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get("access_token")?.value;
@@ -37,12 +58,19 @@ export function proxy(request: NextRequest) {
 
   const headers = securityHeaders();
 
-  if (!token && !isPublicRoute) {
+  // A present-but-dead cookie is not an authenticated session. Treat it as
+  // logged out so /login is reachable, and strip it so it stops being honored.
+  const nowSec = Math.floor(Date.now() / 1000);
+  const tokenAlive = token !== undefined && (readTokenExp(token) ?? 0) > nowSec;
+
+  if (!tokenAlive && !isPublicRoute) {
     if (!NAVIGATION_METHODS.has(method)) {
       // Not a navigation — fail it cleanly so it is never redirected onto
       // the login page. The router treats this as an auth failure and falls
       // back to a normal (GET) page navigation.
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers });
+      const res = NextResponse.json({ error: "Unauthorized" }, { status: 401, headers });
+      if (token) clearAuthCookies(res);
+      return res;
     }
     // Marks this as a session-expiry redirect (as opposed to a plain
     // unauthenticated visit) so the login page can show the "session
@@ -52,7 +80,9 @@ export function proxy(request: NextRequest) {
     url.searchParams.set("session_expired", "1");
     // 303 forces the follow-up request to be GET, guaranteeing the login
     // page is always reached by GET regardless of the original method.
-    return NextResponse.redirect(url, { status: 303, headers });
+    const res = NextResponse.redirect(url, { status: 303, headers });
+    if (token) clearAuthCookies(res);
+    return res;
   }
 
   if (!NAVIGATION_METHODS.has(method) && isPublicRoute) {
@@ -60,14 +90,21 @@ export function proxy(request: NextRequest) {
     // submission before React attached preventDefault, or a client POST to
     // the current URL). The page has no method handler, so normalize to the
     // GET page instead of letting Next answer 405.
-    return NextResponse.redirect(request.nextUrl, { status: 303, headers });
+    const res = NextResponse.redirect(request.nextUrl, { status: 303, headers });
+    if (token && !tokenAlive) clearAuthCookies(res);
+    return res;
   }
 
-  if (token && isPublicRoute) {
+  if (tokenAlive && isPublicRoute) {
     return NextResponse.redirect(new URL("/dashboard", request.url), { status: 303, headers });
   }
 
-  return NextResponse.next({ headers });
+  // Serve the page. If a dead cookie rode along, clear it so the next public
+  // route visit doesn't bounce to /dashboard on a session that no longer
+  // exists.
+  const res = NextResponse.next({ headers });
+  if (token && !tokenAlive) clearAuthCookies(res);
+  return res;
 }
 
 export const config = {

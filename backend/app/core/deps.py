@@ -46,3 +46,37 @@ def current_user(
             status.HTTP_401_UNAUTHORIZED, "Session revoked; please log in again"
         )
     return user
+
+
+def optional_current_user(
+    request: Request,
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Like current_user, but returns None instead of raising on any failure.
+
+    Used for endpoints that must still work when the token has expired, been
+    revoked, or fails the issuer/audience checks (e.g. logout, which clears
+    the HttpOnly cookie a dead token has made otherwise unmatchable).
+    """
+    token: str | None = None
+    if creds is not None:
+        token = creds.credentials
+    else:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        return None
+    try:
+        payload = decode_token(token)
+    except JWTError:
+        return None
+    try:
+        user_id = int(payload["sub"])
+        token_version = int(payload.get("tv", 0))
+    except (TypeError, ValueError, KeyError):
+        return None
+    user = db.get(User, user_id)
+    if not user or not user.is_active or token_version != user.token_version:
+        return None
+    return user

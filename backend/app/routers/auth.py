@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import current_user
+from app.core.deps import current_user, optional_current_user
 from app.core.ratelimit import rate_limited, rate_limited_by_user
 from app.core.security import (
     create_access_token,
@@ -110,11 +110,16 @@ def login(
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
     response: Response,
-    user: User = Depends(current_user),
+    user: User | None = Depends(optional_current_user),
     db: Session = Depends(get_db),
 ):
-    user.token_version += 1
-    db.commit()
+    # Must succeed even when the token is already dead (expired, revoked, or
+    # rejected by the new issuer/audience checks): without this, a stale
+    # HttpOnly cookie can never be cleared client-side and the proxy keeps
+    # bouncing /login → /dashboard forever.
+    if user is not None:
+        user.token_version += 1
+        db.commit()
     _clear_auth_cookies(response)
 
 

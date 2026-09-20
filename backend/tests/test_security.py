@@ -167,6 +167,20 @@ def test_logout_revokes_token(client):
     assert r.status_code == 401
 
 
+def test_logout_with_invalid_token_clears_cookies(client):
+    """Logout must succeed even when the token is dead (backward-compat with
+    pre-v1.0.9 cookies that fail the issuer/audience checks), so the client
+    can always clear the stale HttpOnly cookie and break the redirect loop."""
+    r = client.post(
+        "/auth/logout", headers=auth("eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjF9.garbage")
+    )
+    assert r.status_code == 204
+    set_cookie = r.headers.get("set-cookie", "").lower()
+    assert "access_token=" in set_cookie
+    assert "auth_logged_in=" in set_cookie
+    assert "max-age=0" in set_cookie or "expires=thu, 01 jan 1970" in set_cookie
+
+
 def test_reset_password_revokes_old_token(client_db):
     client, db = client_db
     token = register_and_login(client, "resetrev@example.com")
