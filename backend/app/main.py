@@ -38,7 +38,14 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title="Pay Tracker API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="Pay Tracker API",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url="/docs" if not settings.is_production else None,
+    redoc_url="/redoc" if not settings.is_production else None,
+    openapi_url="/openapi.json" if not settings.is_production else None,
+)
 
 app.add_middleware(
     CORSMiddleware,

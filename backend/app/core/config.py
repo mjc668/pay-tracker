@@ -12,6 +12,26 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://paytracker:changeme@localhost:5432/paytracker"
 
+    environment: str = "development"
+    cookie_secure: bool = False
+    trust_proxy: bool = False
+
+    # Per-scope rate limits (in-memory sliding window, single process)
+    login_rate_limit: int = 10
+    login_rate_window_seconds: int = 60
+    register_rate_limit: int = 25
+    register_rate_window_seconds: int = 3600
+    forgot_password_rate_limit: int = 5
+    forgot_password_rate_window_seconds: int = 3600
+    reset_password_rate_limit: int = 5
+    reset_password_rate_window_seconds: int = 600
+    change_password_rate_limit: int = 5
+    change_password_rate_window_seconds: int = 3600
+    change_email_rate_limit: int = 5
+    change_email_rate_window_seconds: int = 3600
+    send_now_rate_limit: int = 2
+    send_now_rate_window_seconds: int = 3600
+
     jwt_secret: str = _DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
@@ -38,6 +58,10 @@ class Settings(BaseSettings):
 
     # Restore safety net — how long a pre-restore snapshot stays recoverable
     restore_snapshot_retention_days: int = 7
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() == "production"
 
     @field_validator("password_reset_token_expire_minutes")
     @classmethod

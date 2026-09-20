@@ -8,6 +8,24 @@ const publicRoutes = ["/login", "/register", "/forgot-password", "/reset-passwor
 // with a 307 preserves the method and produces a 405 on /login.
 const NAVIGATION_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
+// Hardening headers applied to every proxy response. The API origin is read at
+// runtime (bracket access so the bundler cannot inline it) so the CSP
+// connect-src matches whichever backend this container is pointed at.
+function securityHeaders(): Record<string, string> {
+  const apiOrigin =
+    process.env["API_URL"]?.trim() ||
+    process.env["NEXT_PUBLIC_API_URL"]?.trim() ||
+    "http://localhost:8010";
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
+    "Content-Security-Policy":
+      `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ${apiOrigin}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`,
+  };
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get("access_token")?.value;
@@ -17,12 +35,14 @@ export function proxy(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith(route + "/"),
   );
 
+  const headers = securityHeaders();
+
   if (!token && !isPublicRoute) {
     if (!NAVIGATION_METHODS.has(method)) {
       // Not a navigation — fail it cleanly so it is never redirected onto
       // the login page. The router treats this as an auth failure and falls
       // back to a normal (GET) page navigation.
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers });
     }
     // Marks this as a session-expiry redirect (as opposed to a plain
     // unauthenticated visit) so the login page can show the "session
@@ -32,7 +52,7 @@ export function proxy(request: NextRequest) {
     url.searchParams.set("session_expired", "1");
     // 303 forces the follow-up request to be GET, guaranteeing the login
     // page is always reached by GET regardless of the original method.
-    return NextResponse.redirect(url, 303);
+    return NextResponse.redirect(url, { status: 303, headers });
   }
 
   if (!NAVIGATION_METHODS.has(method) && isPublicRoute) {
@@ -40,14 +60,14 @@ export function proxy(request: NextRequest) {
     // submission before React attached preventDefault, or a client POST to
     // the current URL). The page has no method handler, so normalize to the
     // GET page instead of letting Next answer 405.
-    return NextResponse.redirect(request.nextUrl, 303);
+    return NextResponse.redirect(request.nextUrl, { status: 303, headers });
   }
 
   if (token && isPublicRoute) {
-    return NextResponse.redirect(new URL("/dashboard", request.url), 303);
+    return NextResponse.redirect(new URL("/dashboard", request.url), { status: 303, headers });
   }
 
-  return NextResponse.next();
+  return NextResponse.next({ headers });
 }
 
 export const config = {

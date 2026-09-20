@@ -34,9 +34,10 @@ jobs:
 
       - run: npm run lint
       - run: npm run build
-      # Disabled: npm audit kept flipping CI red on new advisories against
-      # already-locked versions (live database, not tied to our commits).
-      # - run: npm audit --omit=dev --audit-level=high
+      # Advisory only — audits used to flip CI red on new advisories against
+      # already-locked versions, so this step never blocks the pipeline.
+      - run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
 
   backend:
     name: Backend — format, types & tests
@@ -61,16 +62,10 @@ jobs:
       - run: uv run black --check --target-version py313 .
       - run: uv run mypy app
       - run: uv run pytest tests/ -v
-
-      # Disabled: pip-audit kept flipping CI red on new advisories against
-      # already-locked versions (live database, not tied to our commits).
-      # - name: Dependency vulnerability audit
-      #   # PYSEC-2026-1325: unfixed ecdsa timing side-channel, pulled in
-      #   # transitively by python-jose; app only uses HS256 (no ECDSA
-      #   # signing), and upstream has no patched version available.
-      #   run: |
-      #     uv export --no-hashes --group dev -o /tmp/requirements.txt
-      #     uv tool run pip-audit -r /tmp/requirements.txt --ignore-vuln PYSEC-2026-1325
+      # Advisory only — audits used to flip CI red on new advisories against
+      # already-locked versions, so this step never blocks the pipeline.
+      - run: uvx pip-audit
+        continue-on-error: true
 
   docker-e2e:
     name: Docker — build, up, e2e, down

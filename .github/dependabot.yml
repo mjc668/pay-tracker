@@ -1,0 +1,23 @@
+# Dependabot updates for pay-tracker.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: pip
+    directory: "/backend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # uv-based project: dependabot edits pyproject.toml. After merging a
+    # dependabot PR, run `uv lock` and commit the refreshed uv.lock,
+    # otherwise the locked fingerprint drifts from the project metadata.
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

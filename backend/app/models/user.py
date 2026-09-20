@@ -20,6 +20,9 @@ class User(Base):
         String(255), unique=True, nullable=False, index=True
     )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    token_version: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     language_preference: Mapped[str | None] = mapped_column(
         String(5), nullable=True, default=None

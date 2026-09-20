@@ -28,14 +28,21 @@ def current_user(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
         )
     try:
-        user_id = decode_token(token)
+        payload = decode_token(token)
     except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        )
-    user = db.get(User, int(user_id))
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token")
+    try:
+        user_id = int(payload["sub"])
+        token_version = int(payload.get("tv", 0))
+    except (TypeError, ValueError, KeyError):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token")
+    user = db.get(User, user_id)
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+        )
+    if token_version != user.token_version:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "Session revoked; please log in again"
         )
     return user

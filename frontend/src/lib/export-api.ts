@@ -1,9 +1,17 @@
-import { apiFetch, getApiBaseUrl, extractApiError } from "./api";
+import {
+  apiFetch,
+  getApiBaseUrl,
+  getApiPrefix,
+  extractApiError,
+} from "./api";
 
 export async function downloadBackup(): Promise<void> {
-  const res = await fetch(`${getApiBaseUrl()}/export/json`, {
-    credentials: "include",
-  });
+  const res = await fetch(
+    `${getApiBaseUrl()}${getApiPrefix()}/export/json`,
+    {
+      credentials: "include",
+    },
+  );
 
   if (!res.ok) throw await extractApiError(res);
 
@@ -22,11 +30,14 @@ export async function restoreFromBackup(
 ): Promise<{ restored_templates: number; restored_instances: number }> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${getApiBaseUrl()}/export/restore`, {
-    method: "POST",
-    credentials: "include",
-    body: form,
-  });
+  const res = await fetch(
+    `${getApiBaseUrl()}${getApiPrefix()}/export/restore`,
+    {
+      method: "POST",
+      credentials: "include",
+      body: form,
+    },
+  );
   if (!res.ok) throw await extractApiError(res);
   return res.json();
 }
@@ -39,9 +50,12 @@ export async function getExportSummary(): Promise<{
 }
 
 export async function getLastSnapshot(): Promise<{ created_at: string } | null> {
-  const res = await fetch(`${getApiBaseUrl()}/export/last-snapshot`, {
-    credentials: "include",
-  });
+  const res = await fetch(
+    `${getApiBaseUrl()}${getApiPrefix()}/export/last-snapshot`,
+    {
+      credentials: "include",
+    },
+  );
   if (res.status === 404) return null;
   if (!res.ok) throw await extractApiError(res);
   return res.json();
@@ -55,9 +69,12 @@ export async function restoreFromSnapshot(): Promise<{
 }
 
 export async function downloadXlsx(year: number): Promise<void> {
-  const res = await fetch(`${getApiBaseUrl()}/export/xlsx?year=${year}`, {
-    credentials: "include",
-  });
+  const res = await fetch(
+    `${getApiBaseUrl()}${getApiPrefix()}/export/xlsx?year=${year}`,
+    {
+      credentials: "include",
+    },
+  );
 
   if (!res.ok) throw await extractApiError(res);
 

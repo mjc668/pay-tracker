@@ -42,15 +42,16 @@ export default async function RootLayout({
           }}
         />
         {(() => {
-          // Injected at request time from the container's .env (API_URL) so
-          // the same image works anywhere without being rebuilt. Falls back
-          // to the build-time NEXT_PUBLIC_API_URL when not set.
+          // Injected at request time from the container's .env (API_URL /
+          // API_PREFIX) so the same image works anywhere without being
+          // rebuilt. window.__PT_API_URL__ may be the empty string, which
+          // means same-origin (Caddy) mode.
           const apiBaseUrl = process.env.API_URL?.trim() ?? "";
-          if (!apiBaseUrl) return null;
+          const apiPrefix = process.env.API_PREFIX?.trim() ?? "";
           return (
             <script
               dangerouslySetInnerHTML={{
-                __html: `window.__PT_API_URL__=${JSON.stringify(apiBaseUrl)};`,
+                __html: `window.__PT_API_URL__=${JSON.stringify(apiBaseUrl)};window.__PT_API_PREFIX__=${JSON.stringify(apiPrefix)};`,
               }}
             />
           );

@@ -1,0 +1,26 @@
+# Reference Caddy config for the pay-tracker deployment model.
+#
+# - Caddy terminates HTTPS and serves the Next.js frontend.
+# - /api/* is reverse-proxied to the FastAPI backend with the /api prefix
+#   stripped (backend routes have no /api prefix).
+# - Optional: `tls internal` for LAN-only use (self-signed certs; no ACME).
+# - Client IPs flow to the backend via X-Forwarded-For; when running behind a
+#   proxy, set TRUST_PROXY=true in the backend .env so it trusts those headers.
+#
+# Prefer a separate backend hostname instead? Then:
+#   - set NEXT_PUBLIC_API_URL to the https:// backend URL in the frontend env, and
+#   - remove the `handle /api/*` block, and set API_PREFIX="" (empty) in the
+#     backend .env so the backend serves routes at the root again.
+#
+# e.g.:
+#   frontend.example.com { reverse_proxy 10.112.200.5:3010 }
+#   api.example.com { reverse_proxy 10.112.200.5:8010 }
+
+pay.local {
+	reverse_proxy 10.112.200.5:3010
+
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy 10.112.200.5:8010
+	}
+}

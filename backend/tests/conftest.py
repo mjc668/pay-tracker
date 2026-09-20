@@ -17,6 +17,22 @@ from testcontainers.postgres import PostgresContainer
 from app.core.database import Base, get_db
 from app.main import app
 
+# Raise per-scope rate limits to an effectively unbounded value so the suite's
+# shared 127.0.0.1 (and per-user) buckets never trip 429. Limits are read at
+# request time, so mutating the settings singleton here is sufficient.
+from app.core.config import settings as _settings
+
+for _scope in (
+    "login",
+    "register",
+    "forgot_password",
+    "reset_password",
+    "change_password",
+    "change_email",
+    "send_now",
+):
+    setattr(_settings, f"{_scope}_rate_limit", 100000)
+
 
 @pytest.fixture(scope="session")
 def postgres_engine():

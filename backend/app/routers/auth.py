@@ -11,7 +11,13 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import current_user
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.ratelimit import rate_limited, rate_limited_by_user
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    validate_password_strength,
+    verify_password,
+)
 from app.models.reset_token import PasswordResetToken
 from app.models.user import User
 from app.schemas.auth import (
@@ -45,6 +51,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
         value=token,
         httponly=True,
         samesite="lax",
+        secure=settings.cookie_secure,
         path="/",
         max_age=settings.access_token_expire_minutes * 60,
     )
@@ -54,6 +61,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
         value="1",
         httponly=False,
         samesite="lax",
+        secure=settings.cookie_secure,
         path="/",
         max_age=settings.access_token_expire_minutes * 60,
     )
@@ -67,30 +75,46 @@ def _clear_auth_cookies(response: Response) -> None:
 @router.post(
     "/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED
 )
-def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db)):
+def register(
+    body: RegisterRequest,
+    response: Response,
+    _rl: None = Depends(rate_limited("register")),
+    db: Session = Depends(get_db),
+):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
     user = User(email=body.email, password_hash=hash_password(body.password))
     db.add(user)
     db.commit()
     db.refresh(user)
-    token = create_access_token(str(user.id))
+    token = create_access_token(str(user.id), token_version=user.token_version)
     _set_auth_cookie(response, token)
     return TokenResponse(access_token=token)
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(
+    body: LoginRequest,
+    response: Response,
+    _rl: None = Depends(rate_limited("login")),
+    db: Session = Depends(get_db),
+):
     user = db.query(User).filter(User.email == body.email).first()
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token(str(user.id))
+    token = create_access_token(str(user.id), token_version=user.token_version)
     _set_auth_cookie(response, token)
     return TokenResponse(access_token=token)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(response: Response):
+def logout(
+    response: Response,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    user.token_version += 1
+    db.commit()
     _clear_auth_cookies(response)
 
 
@@ -128,22 +152,20 @@ def delete_me(
 def change_password(
     body: ChangePasswordRequest,
     user: User = Depends(current_user),
+    _rl: None = Depends(rate_limited_by_user("change_password")),
     db: Session = Depends(get_db),
 ):
     if not verify_password(body.current_password, user.password_hash):
         raise HTTPException(status_code=401, detail="Current password is incorrect")
-    if len(body.new_password) < 8:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="New password must be at least 8 characters",
-        )
     user.password_hash = hash_password(body.new_password)
+    user.token_version += 1
     db.commit()
 
 
 @router.post("/send-notification-now", response_model=SendNotificationNowOut)
 def send_notification_now(
     user: User = Depends(current_user),
+    _rl: None = Depends(rate_limited_by_user("send_now")),
     db: Session = Depends(get_db),
 ):
     if settings.smtp_host is None:
@@ -157,6 +179,7 @@ def send_notification_now(
 @router.post("/send-monthly-summary-now", response_model=SendMonthlySummaryNowOut)
 def send_monthly_summary_now(
     user: User = Depends(current_user),
+    _rl: None = Depends(rate_limited_by_user("send_now")),
     db: Session = Depends(get_db),
 ):
     if settings.smtp_host is None:
@@ -177,6 +200,7 @@ def server_time(_: User = Depends(current_user)):
 def change_email(
     body: ChangeEmailRequest,
     user: User = Depends(current_user),
+    _rl: None = Depends(rate_limited_by_user("change_email")),
     db: Session = Depends(get_db),
 ):
     if not verify_password(body.current_password, user.password_hash):
@@ -185,6 +209,7 @@ def change_email(
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
     user.email = body.new_email
+    user.token_version += 1
     db.commit()
     db.refresh(user)
     return user
@@ -201,7 +226,11 @@ _FORGOT_PASSWORD_RESPONSE = MessageResponse(
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
-def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(
+    body: ForgotPasswordRequest,
+    _rl: None = Depends(rate_limited("forgot_password")),
+    db: Session = Depends(get_db),
+):
     user = db.query(User).filter(User.email == body.email).first()
     if not user:
         return _FORGOT_PASSWORD_RESPONSE
@@ -254,7 +283,11 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/reset-password", response_model=MessageResponse)
-def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password(
+    body: ResetPasswordRequest,
+    _rl: None = Depends(rate_limited("reset_password")),
+    db: Session = Depends(get_db),
+):
     token_hash = hashlib.sha256(body.token.encode()).hexdigest()
     token_row = (
         db.query(PasswordResetToken)
@@ -269,16 +302,17 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status_code=400, detail="Reset token has expired")
 
-    if len(body.new_password) < 8:
-        raise HTTPException(
-            status_code=400, detail="Password must be at least 8 characters"
-        )
+    try:
+        validate_password_strength(body.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     user = db.query(User).filter(User.id == token_row.user_id).first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     user.password_hash = hash_password(body.new_password)
+    user.token_version += 1
     db.delete(token_row)
     db.commit()
 

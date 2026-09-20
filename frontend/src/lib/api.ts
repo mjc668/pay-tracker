@@ -6,8 +6,11 @@ export interface TokenResponse {
 declare global {
   interface Window {
     // Runtime backend URL injected server-side from process.env.API_URL so a
-    // single image can be deployed anywhere without a rebuild.
+    // single image can be deployed anywhere without a rebuild. Empty string
+    // means same-origin (Caddy) mode.
     __PT_API_URL__?: string;
+    // Runtime API path prefix injected server-side from process.env.API_PREFIX.
+    __PT_API_PREFIX__?: string;
   }
 }
 
@@ -17,12 +20,23 @@ declare global {
 export function getApiBaseUrl(): string {
   if (
     typeof window !== "undefined" &&
-    typeof window.__PT_API_URL__ === "string" &&
-    window.__PT_API_URL__.trim()
+    typeof window.__PT_API_URL__ === "string"
   ) {
     return window.__PT_API_URL__;
   }
   return process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:8010";
+}
+
+// Resolve the API path prefix at call time: prefer the runtime override (set
+// from the container's .env by the server), then the build-time value.
+export function getApiPrefix(): string {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.__PT_API_PREFIX__ === "string"
+  ) {
+    return window.__PT_API_PREFIX__;
+  }
+  return process.env.NEXT_PUBLIC_API_PREFIX?.trim() || "";
 }
 
 export class SessionExpiredError extends Error {
@@ -34,7 +48,7 @@ export class SessionExpiredError extends Error {
 
 // A 401 on this path is an expected outcome (bad credentials), not a
 // sign of an expired session, so it must not trigger auto-logout.
-const AUTH_401_EXEMPT_PATHS = ["/auth/login"];
+const AUTH_401_EXEMPT_PATHS = ["/auth/login", "/auth/logout"];
 
 type SessionExpiredHandler = () => void;
 let sessionExpiredHandler: SessionExpiredHandler | null = null;
@@ -64,7 +78,7 @@ export async function apiFetch<T>(
   };
 
   // credentials: "include" sends the HttpOnly access_token cookie automatically.
-  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+  const res = await fetch(`${getApiBaseUrl()}${getApiPrefix()}${path}`, {
     ...init,
     headers,
     credentials: "include",
