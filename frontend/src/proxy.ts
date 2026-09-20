@@ -35,6 +35,14 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(url, 303);
   }
 
+  if (!NAVIGATION_METHODS.has(method) && isPublicRoute) {
+    // A non-GET method reached a public page directly (e.g. a native form
+    // submission before React attached preventDefault, or a client POST to
+    // the current URL). The page has no method handler, so normalize to the
+    // GET page instead of letting Next answer 405.
+    return NextResponse.redirect(request.nextUrl, 303);
+  }
+
   if (token && isPublicRoute) {
     return NextResponse.redirect(new URL("/dashboard", request.url), 303);
   }
