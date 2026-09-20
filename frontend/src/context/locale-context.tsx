@@ -6,6 +6,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useSyncExternalStore,
   ReactNode,
 } from "react";
 import { NextIntlClientProvider } from "next-intl";
@@ -33,6 +34,14 @@ function detectBrowserLocale(): Locale {
   return "en";
 }
 
+function subscribeNever(): () => void {
+  return () => {};
+}
+
+function getServerLocale(): Locale {
+  return "en";
+}
+
 interface LocaleContextValue {
   locale: Locale;
   setLocale: (l: Locale) => void;
@@ -42,7 +51,16 @@ const LocaleContext = createContext<LocaleContextValue | null>(null);
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
-  const [locale, setLocaleState] = useState<Locale>(detectBrowserLocale);
+  // navigator.language is browser-only, so SSR and hydration always start at
+  // "en" (getServerSnapshot); React re-reads the client value after hydration.
+  // Account-level preference overrides it once the profile loads.
+  const detectedLocale = useSyncExternalStore(
+    subscribeNever,
+    detectBrowserLocale,
+    getServerLocale,
+  );
+  const [localeOverride, setLocaleOverride] = useState<Locale | null>(null);
+  const locale = localeOverride ?? detectedLocale;
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -54,7 +72,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
           profile.language_preference &&
           VALID_LOCALES.includes(profile.language_preference as Locale)
         ) {
-          setLocaleState(profile.language_preference as Locale);
+          setLocaleOverride(profile.language_preference as Locale);
         } else if (!profile.language_preference) {
           // Persist the browser-detected locale so backend emails use the right language
           updateMe({ language_preference: detectBrowserLocale() }).catch(() => {});
@@ -72,7 +90,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 
   const setLocale = useCallback(
     (l: Locale) => {
-      setLocaleState(l);
+      setLocaleOverride(l);
       if (isAuthenticated) {
         updateMe({ language_preference: l }).catch(() => {
           // persist failure is non-fatal

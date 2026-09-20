@@ -3,10 +3,10 @@
 import {
   createContext,
   useContext,
-  useState,
   useCallback,
   useEffect,
   useRef,
+  useSyncExternalStore,
   ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -24,8 +24,49 @@ const SESSION_HEARTBEAT_MS =
   (Number(process.env.NEXT_PUBLIC_SESSION_HEARTBEAT_SECONDS) ||
     DEFAULT_SESSION_HEARTBEAT_SECONDS) * 1000;
 
+// Auth state is an external store backed by the presence cookie. Server and
+// hydration renders report "logged out" via getAuthServerSnapshot; once
+// hydrated, React re-reads the client snapshot, and login/logout emit changes.
+// This keeps SSR HTML and the hydration render identical (no React #418).
+const authListeners = new Set<() => void>();
+
+function subscribeAuth(onChange: () => void): () => void {
+  authListeners.add(onChange);
+  return () => {
+    authListeners.delete(onChange);
+  };
+}
+
+function emitAuthChanged(): void {
+  authListeners.forEach((listener) => listener());
+}
+
+function getAuthSnapshot(): boolean {
+  return getAuthToken() !== null;
+}
+
+function getAuthServerSnapshot(): boolean {
+  return false;
+}
+
+function subscribeNever(): () => void {
+  return () => {};
+}
+
+function getMountedSnapshot(): boolean {
+  return true;
+}
+
+function getMountedServerSnapshot(): boolean {
+  return false;
+}
+
 interface AuthContextValue {
   isAuthenticated: boolean;
+  // False until the post-hydration cookie read has run. Consumers that render
+  // auth-dependent markup must wait for this so the first client render
+  // matches the server HTML.
+  isReady: boolean;
   login: () => void;
   logout: () => void;
 }
@@ -33,9 +74,17 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Presence is detected from the non-HttpOnly auth_logged_in cookie.
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
-    () => getAuthToken() !== null,
+  // isReady flips true after hydration so the dashboard redirect guard never
+  // runs against the placeholder "logged out" value.
+  const isReady = useSyncExternalStore(
+    subscribeNever,
+    getMountedSnapshot,
+    getMountedServerSnapshot,
+  );
+  const isAuthenticated = useSyncExternalStore(
+    subscribeAuth,
+    getAuthSnapshot,
+    getAuthServerSnapshot,
   );
   const router = useRouter();
   // Guards against multiple parallel 401s all triggering the redirect.
@@ -51,7 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // to /login after a fresh, valid re-login.
   const login = useCallback(() => {
     loggingOutRef.current = false;
-    setIsAuthenticated(true);
+    // The /auth/login response already set the cookies; notify the store.
+    emitAuthChanged();
     router.refresh();
   }, [router]);
 
@@ -61,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Proceed with client-side logout even if the request fails.
     }
-    setIsAuthenticated(false);
+    emitAuthChanged();
     router.refresh();
     router.push("/login");
   }, [router]);
@@ -71,7 +121,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (loggingOutRef.current) return;
       loggingOutRef.current = true;
       sessionStorage.setItem(SESSION_EXPIRED_KEY, "1");
-      setIsAuthenticated(false);
       // The token has been rejected by the backend (expired, revoked, or a
       // pre-claims-enforcement cookie). Clear the HttpOnly cookie server-side
       // first so the proxy stops bouncing /login → /dashboard; then hard-
@@ -81,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // Even a failed logout must not block the redirect.
       }
+      emitAuthChanged();
       window.location.assign("/login");
     });
     return () => setSessionExpiredHandler(null);
@@ -108,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, isReady, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

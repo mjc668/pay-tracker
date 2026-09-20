@@ -23,7 +23,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, isReady, logout } = useAuth();
   const t = useTranslations("DashboardLayout");
   const router = useRouter();
   const pathname = usePathname();
@@ -34,8 +34,10 @@ export default function DashboardLayout({
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
-  }, [isAuthenticated, router]);
+    // Wait for the cookie sync before deciding: redirecting during the first
+    // render would kick authenticated users out before their state is known.
+    if (isReady && !isAuthenticated) router.replace("/login");
+  }, [isReady, isAuthenticated, router]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -65,7 +67,7 @@ export default function DashboardLayout({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [userMenuOpen]);
 
-  if (!isAuthenticated) return null;
+  if (!isReady || !isAuthenticated) return null;
 
   const initials = userEmail ? userEmail[0].toUpperCase() : "?";
 

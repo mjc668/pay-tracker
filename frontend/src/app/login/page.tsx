@@ -18,22 +18,27 @@ export default function LoginPage() {
   const { notifyDueToday } = useNotifications();
   const t = useTranslations("Auth");
   const tCommon = useTranslations("Common");
-  const [error, setError] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    // Two independent triggers for this banner: a client-side 401 caught
-    // mid-session (flagged via sessionStorage, see auth-context.tsx), or
-    // proxy.ts redirecting here server-side because the cookie was already
-    // gone before the page ever loaded (flagged via query param, since
-    // middleware can't touch sessionStorage).
+  // Starts null on server and client alike; the flags are read after mount so
+  // the hydration render can't disagree with the server HTML.
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [smtpConfigured, setSmtpConfigured] = useState(false);
+
+  useEffect(() => {
+    // Two independent triggers for the session-expired banner: a client-side
+    // 401 caught mid-session (flagged via sessionStorage, see
+    // auth-context.tsx), or proxy.ts redirecting here server-side because the
+    // cookie was already gone before the page ever loaded (flagged via query
+    // param, since middleware can't touch sessionStorage).
     const hasQueryFlag =
       new URLSearchParams(window.location.search).get("session_expired") === "1";
     const hasStorageFlag = sessionStorage.getItem(SESSION_EXPIRED_KEY) !== null;
-    if (!hasQueryFlag && !hasStorageFlag) return null;
-    sessionStorage.removeItem(SESSION_EXPIRED_KEY);
-    return t("sessionExpired");
-  });
-  const [loading, setLoading] = useState(false);
-  const [smtpConfigured, setSmtpConfigured] = useState(false);
+    if (hasQueryFlag || hasStorageFlag) {
+      sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot post-hydration read of browser-only flags; the value must also clear the flags, so it cannot be an external-store snapshot
+      setError(t("sessionExpired"));
+    }
+  }, [t]);
 
   useEffect(() => {
     apiFetch<{ configured: boolean }>("/auth/smtp-status")
