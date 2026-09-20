@@ -21,4 +21,7 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 EXPOSE 3000
-CMD ["/bin/sh", "-c", "echo '' && echo '  Frontend/UI available on: http://localhost:3010' && echo '' && node server.js"]
+# Seed the runtime-only API_URL from the container's NEXT_PUBLIC_API_URL
+# (passed via env_file) so the same image works on any host regardless of
+# compose version. The layout injects API_URL into the page at request time.
+CMD ["/bin/sh", "-c", "export API_URL=\"${NEXT_PUBLIC_API_URL:-http://localhost:8010}\" && echo '' && echo '  Frontend/UI available on: http://localhost:3010' && echo '' && node server.js"]
