@@ -34,3 +34,25 @@ def test_insecure_cookie_over_http_does_not_warn():
         cookie_secure=False, app_base_url="http://10.112.200.5:3010"
     )
     assert not any("COOKIE_SECURE=true" in m for m in messages)
+
+
+def test_apprise_base_url_trailing_slashes_are_stripped():
+    s = Settings(apprise_base_url="http://10.112.200.5:8000///")
+    assert s.apprise_base_url == "http://10.112.200.5:8000"
+
+
+def test_apprise_configured_requires_base_url_and_target():
+    assert Settings(apprise_base_url=None).apprise_configured is False
+    assert Settings(apprise_base_url="http://x").apprise_configured is False
+    assert (
+        Settings(
+            apprise_base_url="http://x", apprise_urls="ntfy://topic"
+        ).apprise_configured
+        is True
+    )
+    assert (
+        Settings(
+            apprise_base_url="http://x", apprise_key="household"
+        ).apprise_configured
+        is True
+    )

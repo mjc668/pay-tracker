@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     reminder_from: str | None = None
 
+    # Apprise (optional notification channel, preferred over email when configured)
+    apprise_base_url: str | None = None
+    apprise_urls: str | None = None
+    apprise_key: str | None = None
+    apprise_timeout_seconds: float = 10.0
+
     # Email domain blocklist — addresses whose domain matches are silently skipped
     # by the reminder/summary scheduler. Set via EMAIL_BLOCKED_DOMAINS as a JSON
     # array, e.g. '["test.com","example.com"]'. Defaults cover E2E test addresses.
@@ -63,6 +69,19 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    @property
+    def apprise_configured(self) -> bool:
+        return bool(self.apprise_base_url) and bool(
+            self.apprise_key or self.apprise_urls
+        )
+
+    @field_validator("apprise_base_url")
+    @classmethod
+    def strip_apprise_base_url_trailing_slash(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return v.rstrip("/")
 
     @field_validator("password_reset_token_expire_minutes")
     @classmethod

@@ -26,22 +26,31 @@ from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
+    NotificationStatusResponse,
     RegisterRequest,
     ResetPasswordRequest,
     SendMonthlySummaryNowOut,
     SendNotificationNowOut,
+    SendTestNotificationOut,
     SmtpStatusResponse,
     TokenResponse,
     UserProfileOut,
     UserProfileUpdate,
 )
-from app.services.email import send_password_reset_email
+from app.services import notifications
+from app.services.email import send_password_reset_email, send_test_email
 from app.services.reminder_job import (
     send_monthly_summary_for_user,
     send_reminders_for_user,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_TEST_NOTIFICATION_TITLE = "Pay Tracker test notification"
+_TEST_NOTIFICATION_BODY = (
+    "This is a test notification from Pay Tracker. "
+    "If you can read this, notifications are working."
+)
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -173,8 +182,10 @@ def send_notification_now(
     _rl: None = Depends(rate_limited_by_user("send_now")),
     db: Session = Depends(get_db),
 ):
-    if settings.smtp_host is None:
-        raise HTTPException(status_code=400, detail="SMTP not configured")
+    if not notifications.any_channel_configured():
+        raise HTTPException(
+            status_code=400, detail="No notification channel configured"
+        )
     if not user.email_reminders_enabled:
         return SendNotificationNowOut(sent=0)
     sent = send_reminders_for_user(db, user)
@@ -187,8 +198,10 @@ def send_monthly_summary_now(
     _rl: None = Depends(rate_limited_by_user("send_now")),
     db: Session = Depends(get_db),
 ):
-    if settings.smtp_host is None:
-        raise HTTPException(status_code=400, detail="SMTP not configured")
+    if not notifications.any_channel_configured():
+        raise HTTPException(
+            status_code=400, detail="No notification channel configured"
+        )
     if not user.email_reminders_enabled or not user.monthly_summary_enabled:
         return SendMonthlySummaryNowOut(sent=False)
     current_month = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -223,6 +236,51 @@ def change_email(
 @router.get("/smtp-status", response_model=SmtpStatusResponse)
 def smtp_status():
     return SmtpStatusResponse(configured=settings.smtp_host is not None)
+
+
+@router.get("/notification-status", response_model=NotificationStatusResponse)
+def notification_status():
+    return NotificationStatusResponse(
+        smtp_configured=settings.smtp_host is not None,
+        apprise_configured=notifications.apprise_configured(),
+    )
+
+
+@router.post("/send-test-notification", response_model=SendTestNotificationOut)
+def send_test_notification(
+    user: User = Depends(current_user),
+    _rl: None = Depends(rate_limited_by_user("send_now")),
+):
+    def _send_email() -> None:
+        smtp_host = settings.smtp_host
+        if smtp_host is None:
+            raise OSError("SMTP not configured")
+        send_test_email(
+            smtp_host=smtp_host,
+            smtp_port=settings.smtp_port,
+            smtp_user=settings.smtp_user,
+            smtp_password=(
+                settings.smtp_password.get_secret_value()
+                if settings.smtp_password
+                else None
+            ),
+            smtp_use_tls=settings.smtp_use_tls,
+            from_addr=settings.reminder_from or settings.smtp_user or "",
+            to_addr=user.email,
+            language=user.language_preference or "en",
+        )
+
+    result = notifications.deliver(
+        title=_TEST_NOTIFICATION_TITLE,
+        body=_TEST_NOTIFICATION_BODY,
+        notify_type="success",
+        email_sender=_send_email,
+    )
+    return SendTestNotificationOut(
+        ok=result.ok,
+        channel=result.channel.value if result.channel else None,
+        detail=result.error,
+    )
 
 
 _FORGOT_PASSWORD_RESPONSE = MessageResponse(

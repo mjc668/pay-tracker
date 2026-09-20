@@ -64,6 +64,27 @@ export function sendMonthlySummaryNow(): Promise<{ sent: boolean }> {
   });
 }
 
+export interface NotificationStatus {
+  smtp_configured: boolean;
+  apprise_configured: boolean;
+}
+
+export interface TestNotificationResult {
+  ok: boolean;
+  channel: "apprise" | "email" | null;
+  detail: string | null;
+}
+
+export function fetchNotificationStatus(): Promise<NotificationStatus> {
+  return apiFetch<NotificationStatus>("/auth/notification-status");
+}
+
+export function sendTestNotification(): Promise<TestNotificationResult> {
+  return apiFetch<TestNotificationResult>("/auth/send-test-notification", {
+    method: "POST",
+  });
+}
+
 export function fetchServerTime(): Promise<{ server_time: string }> {
   return apiFetch<{ server_time: string }>("/auth/server-time");
 }

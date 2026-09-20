@@ -80,6 +80,46 @@ The household self-hosted Pay Tracker on a Hetzner CX22 in 2026. Eight months la
 - **Approval**: All production actions (deploy, rollback, secret rotation, server access) require a human SSH session. No unattended agent access to the VPS.
 - **Logs**: `docker compose logs -f --tail=100 backend` or `docker compose logs -f --tail=100 frontend`. For persistent logs across restarts: configure Docker's `json-file` log driver with `max-size: 10m` and `max-file: 3` in `/etc/docker/daemon.json`.
 
+## Notification channels
+
+Reminders and the monthly summary are delivered through the first configured channel:
+
+1. **Apprise** — preferred when `APPRISE_BASE_URL` plus `APPRISE_KEY` or `APPRISE_URLS` are set.
+2. **SMTP email** — fallback (and the only channel when Apprise is not configured).
+3. Neither configured — the scheduler logs a warning and skips; the "send now" endpoints return `400 No notification channel configured`.
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `APPRISE_BASE_URL` | — | Apprise API base URL, e.g. `http://10.112.200.5:8000` (trailing `/` stripped) |
+| `APPRISE_URLS` | — | Stateless mode: space/comma-separated target URLs passed through as-is |
+| `APPRISE_KEY` | — | Stateful mode: config key stored in the Apprise container (wins over `APPRISE_URLS`) |
+| `APPRISE_TIMEOUT_SECONDS` | `10` | HTTP timeout for the Apprise call |
+
+The Apprise container must be reachable from the backend container — use the host IP or a shared Docker network (`localhost` would point at the backend container itself). Example sidecar:
+
+```yaml
+services:
+  apprise:
+    image: caronc/apprise:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - apprise-config:/config
+
+volumes:
+  apprise-config:
+```
+
+Stateless example:
+
+```bash
+APPRISE_BASE_URL=http://10.112.200.5:8000
+APPRISE_URLS="ntfy://paytracker discord://1234/abcdef"
+```
+
+Apprise failures fall back to email immediately (no queue or retry). `email_sent_at` is stamped only for email deliveries; reminder flags are set for any successful channel.
+
 ## Risk Register
 
 | Risk | Source | Likelihood | Impact | Mitigation |

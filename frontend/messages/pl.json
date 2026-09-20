@@ -382,7 +382,18 @@
             "sendMonthlySummarySending": "Wysyłanie...",
             "sendMonthlySummarySent": "Miesięczne podsumowanie wysłane",
             "sendMonthlySummaryNoData": "Brak płatności w tym miesiącu",
-            "serverTimeHint": "Przypomnienia są wysyłane według czasu serwera (UTC). Aktualny czas serwera: {time}."
+            "serverTimeHint": "Przypomnienia są wysyłane według czasu serwera (UTC). Aktualny czas serwera: {time}.",
+            "channelsLabel": "Kanały dostarczania",
+            "smtpChannel": "E-mail (SMTP)",
+            "appriseChannel": "Apprise",
+            "channelConfigured": "Skonfigurowany",
+            "channelNotConfigured": "Nie skonfigurowano",
+            "noChannelWarning": "Nie skonfigurowano żadnego kanału powiadomień. Powiadomienia nie będą wysyłane, dopóki kanał nie zostanie skonfigurowany.",
+            "sendTestButton": "Wyślij testowe powiadomienie",
+            "sendTestSending": "Wysyłanie...",
+            "testSentViaApprise": "Wysłano przez Apprise",
+            "testSentViaEmail": "Wysłano e-mailem",
+            "testFailed": "Nie udało się wysłać testowego powiadomienia"
         },
         "browserNotifications": {
             "title": "Powiadomienia przeglądarki",

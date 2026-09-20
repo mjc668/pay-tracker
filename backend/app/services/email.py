@@ -102,6 +102,26 @@ _BODIES: dict[tuple[str, str], str] = {
 }
 
 
+def build_reminder_text(
+    *,
+    bill_name: str,
+    due_date: date,
+    amount: Decimal,
+    currency: str,
+    kind: str,
+    language: str,
+) -> tuple[str, str]:
+    """Return a localized (title, body) plain-text reminder."""
+    lang = language if (kind, language) in _SUBJECTS else "en"
+    ctx = {
+        "bill_name": bill_name,
+        "due_date": due_date.isoformat(),
+        "amount": amount,
+        "currency": currency,
+    }
+    return _SUBJECTS[(kind, lang)].format(**ctx), _BODIES[(kind, lang)].format(**ctx)
+
+
 def send_reminder_email(
     *,
     smtp_host: str,
@@ -378,6 +398,20 @@ def _build_summary_plaintext(
     return "\n".join(lines)
 
 
+def build_monthly_summary_text(
+    *,
+    month_label: str,
+    paid_rows: list[dict[str, Any]],
+    unpaid_rows: list[dict[str, Any]],
+    language: str,
+) -> tuple[str, str]:
+    """Return a localized (title, body) compact plain-text monthly summary."""
+    lang = language if language in _SUMMARY_SUBJECTS else "en"
+    title = _SUMMARY_SUBJECTS[lang].format(month_label=month_label)
+    body = _build_summary_plaintext(month_label, paid_rows, unpaid_rows, lang)
+    return title, body
+
+
 _RESET_SUBJECTS: dict[str, str] = {
     "en": "Reset your Pay Tracker password",
     "pl": "Zresetuj hasło Pay Tracker",
@@ -474,6 +508,62 @@ def send_monthly_summary_email(
     msg["Subject"] = subject
     msg.set_content(plain)
     msg.add_alternative(html, subtype="html")
+
+    with smtplib.SMTP(smtp_host, smtp_port) as smtp:
+        if smtp_use_tls:
+            smtp.starttls()
+        if smtp_user:
+            smtp.login(smtp_user, smtp_password or "")
+        smtp.send_message(msg)
+
+
+_TEST_SUBJECTS: dict[str, str] = {
+    "en": "Pay Tracker test notification",
+    "pl": "Powiadomienie testowe Pay Tracker",
+    "de": "Pay Tracker Testbenachrichtigung",
+}
+
+_TEST_BODIES: dict[str, str] = {
+    "en": (
+        "This is a test notification from Pay Tracker. "
+        "If you received it, email notifications are working."
+    ),
+    "pl": (
+        "To jest powiadomienie testowe z Pay Tracker. "
+        "Jeśli je otrzymałeś, powiadomienia e-mail działają."
+    ),
+    "de": (
+        "Dies ist eine Testbenachrichtigung von Pay Tracker. "
+        "Wenn Sie sie erhalten haben, funktionieren die E-Mail-Benachrichtigungen."
+    ),
+}
+
+
+def send_test_email(
+    *,
+    smtp_host: str,
+    smtp_port: int,
+    smtp_user: str | None,
+    smtp_password: str | None,
+    smtp_use_tls: bool = True,
+    from_addr: str = "",
+    to_addr: str,
+    language: str = "en",
+) -> None:
+    lang = language if language in _TEST_SUBJECTS else "en"
+    plain = _TEST_BODIES[lang]
+    html_body = (
+        "<html><body>"
+        f'<p style="font-family:Arial,sans-serif;color:#1e293b">{html.escape(plain)}</p>'
+        "</body></html>"
+    )
+
+    msg = EmailMessage()
+    msg["From"] = from_addr
+    msg["To"] = to_addr
+    msg["Subject"] = _TEST_SUBJECTS[lang]
+    msg.set_content(plain)
+    msg.add_alternative(html_body, subtype="html")
 
     with smtplib.SMTP(smtp_host, smtp_port) as smtp:
         if smtp_use_tls:

@@ -1,6 +1,7 @@
 """Unit tests for app/services/reminder_job.py."""
 
 import smtplib
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import patch
@@ -12,6 +13,7 @@ def _today_utc() -> date:
 
 import app.models.bill  # noqa: F401 — register models
 import app.models.user  # noqa: F401
+from app.core.config import settings
 from app.models.bill import (
     BillCategory,
     BillFrequency,
@@ -80,24 +82,37 @@ def _make_instance(db, bill_id: int, due_date: date, **kwargs) -> PaymentInstanc
     return inst
 
 
-def _smtp_settings(mock_settings):
-    mock_settings.smtp_host = "smtp.test"
-    mock_settings.smtp_port = 587
-    mock_settings.smtp_user = None
-    mock_settings.smtp_password = None
-    mock_settings.reminder_from = "r@test.com"
-    mock_settings.email_blocked_domains = []
+@contextmanager
+def _channels(
+    *,
+    smtp_host: str | None = "smtp.test",
+    apprise_base_url: str | None = None,
+    apprise_urls: str | None = None,
+    apprise_key: str | None = None,
+):
+    """Patch the settings singleton so both reminder_job and notifications see it."""
+    with (
+        patch.object(settings, "smtp_host", smtp_host),
+        patch.object(settings, "smtp_port", 587),
+        patch.object(settings, "smtp_user", None),
+        patch.object(settings, "smtp_password", None),
+        patch.object(settings, "smtp_use_tls", True),
+        patch.object(settings, "reminder_from", "r@test.com"),
+        patch.object(settings, "email_blocked_domains", []),
+        patch.object(settings, "apprise_base_url", apprise_base_url),
+        patch.object(settings, "apprise_urls", apprise_urls),
+        patch.object(settings, "apprise_key", apprise_key),
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------
 
 
-@patch("app.services.reminder_job.settings")
 @patch("app.services.reminder_job.send_reminder_email")
-def test_no_smtp_skips_all(mock_send, mock_settings, db_sessionmaker):
-    mock_settings.smtp_host = None
-
-    send_daily_reminders(db_sessionmaker)
+def test_no_smtp_skips_all(mock_send, db_sessionmaker):
+    with _channels(smtp_host=None):
+        send_daily_reminders(db_sessionmaker)
 
     mock_send.assert_not_called()
 
@@ -114,8 +129,7 @@ def test_upcoming_instance_sends_and_flips_flag(
     inst_id = inst.id
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         send_daily_reminders(db_sessionmaker, send_minute=480)
 
     mock_send.assert_called_once()
@@ -140,8 +154,7 @@ def test_1_day_after_instance_sends_and_flips_flag(
     inst_id = inst.id
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         send_daily_reminders(db_sessionmaker, send_minute=480)
 
     mock_send.assert_called_once()
@@ -166,8 +179,7 @@ def test_2_days_before_instance_sends_and_flips_flag(
     inst_id = inst.id
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         send_daily_reminders(db_sessionmaker, send_minute=480)
 
     mock_send.assert_called_once()
@@ -191,8 +203,7 @@ def test_on_day_instance_sends_and_flips_flag(
     inst_id = inst.id
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         send_daily_reminders(db_sessionmaker, send_minute=480)
 
     mock_send.assert_called_once()
@@ -220,8 +231,7 @@ def test_already_sent_flag_skips_email(
     )
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         send_daily_reminders(db_sessionmaker, send_minute=480)
 
     mock_send.assert_not_called()
@@ -244,8 +254,7 @@ def test_opt_out_user_skips_email(
     _make_instance(db_session, bill.id, due_date=today + timedelta(days=1))
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         send_daily_reminders(db_sessionmaker, send_minute=480)
 
     mock_send.assert_not_called()
@@ -267,8 +276,7 @@ def test_smtp_exception_does_not_flip_flag(
     inst_id = inst.id
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         send_daily_reminders(db_sessionmaker, send_minute=480)
 
     mock_send.assert_called_once()
@@ -326,8 +334,7 @@ def test_monthly_summary_splits_paid_and_unpaid(mock_send, db_session):
     _make_instance(db_session, unpaid_bill.id, due_date=today.replace(day=5))
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         result = send_monthly_summary_for_user(
             db_session, user, today.strftime("%Y-%m")
         )
@@ -345,8 +352,7 @@ def test_monthly_summary_returns_false_when_smtp_not_configured(db_session):
     user = _make_user(db_session)
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        mock_settings.smtp_host = None
+    with _channels(smtp_host=None):
         result = send_monthly_summary_for_user(db_session, user, "2026-06")
 
     assert result is False
@@ -362,8 +368,7 @@ def test_monthly_summary_returns_false_on_smtp_error(mock_send, db_session):
     _make_instance(db_session, bill.id, due_date=today)
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         result = send_monthly_summary_for_user(
             db_session, user, today.strftime("%Y-%m")
         )
@@ -394,13 +399,12 @@ def test_monthly_summary_idempotency_via_last_sent_flag(
     fake_today = today.replace(day=last_day)
 
     with (
-        patch("app.services.reminder_job.settings") as mock_settings,
+        _channels(),
         patch(
             "app.services.reminder_job.datetime",
             wraps=__import__("datetime", fromlist=["datetime"]).datetime,
         ) as mock_dt,
     ):
-        _smtp_settings(mock_settings)
         mock_dt.now.return_value = datetime(
             fake_today.year, fake_today.month, fake_today.day, 8, 0, tzinfo=timezone.utc
         )
@@ -430,13 +434,12 @@ def test_monthly_summary_sent_and_flag_updated_on_last_day(
     user_id = user.id
 
     with (
-        patch("app.services.reminder_job.settings") as mock_settings,
+        _channels(),
         patch(
             "app.services.reminder_job.datetime",
             wraps=__import__("datetime", fromlist=["datetime"]).datetime,
         ) as mock_dt,
     ):
-        _smtp_settings(mock_settings)
         mock_dt.now.return_value = datetime(
             fake_today.year, fake_today.month, fake_today.day, 8, 0, tzinfo=timezone.utc
         )
@@ -463,8 +466,7 @@ def test_master_toggle_off_skips_daily_reminder(mock_send, db_session, db_sessio
     _make_instance(db_session, bill.id, due_date=today + timedelta(days=1))
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         send_daily_reminders(db_sessionmaker, send_minute=480)
 
     mock_send.assert_not_called()
@@ -482,8 +484,7 @@ def test_master_toggle_off_skips_catchup_reminder(
     _make_instance(db_session, bill.id, due_date=today + timedelta(days=1))
     db_session.commit()
 
-    with patch("app.services.reminder_job.settings") as mock_settings:
-        _smtp_settings(mock_settings)
+    with _channels():
         # current_minute=480 covers all users whose send_minute <= 480
         send_catchup_reminders(db_sessionmaker, send_minute=480)
 
@@ -511,13 +512,12 @@ def test_master_toggle_off_skips_monthly_summary_scheduler(
     db_session.commit()
 
     with (
-        patch("app.services.reminder_job.settings") as mock_settings,
+        _channels(),
         patch(
             "app.services.reminder_job.datetime",
             wraps=__import__("datetime", fromlist=["datetime"]).datetime,
         ) as mock_dt,
     ):
-        _smtp_settings(mock_settings)
         mock_dt.now.return_value = datetime(
             fake_today.year, fake_today.month, fake_today.day, 8, 0, tzinfo=timezone.utc
         )

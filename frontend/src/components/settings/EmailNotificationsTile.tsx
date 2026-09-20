@@ -4,10 +4,14 @@ import { AlertTriangle, BarChart2, Loader2, Mail, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
+  fetchNotificationStatus,
   fetchServerTime,
   sendMonthlySummaryNow,
   sendNotificationNow,
+  sendTestNotification,
   updateMe,
+  type NotificationStatus,
+  type TestNotificationResult,
   type UserProfile,
 } from "@/lib/user-api";
 import { Switch } from "@/components/ui/Switch";
@@ -56,7 +60,18 @@ export function EmailNotificationsTile({
   const [sendSummaryResult, setSendSummaryResult] = useState<
     { sent: boolean } | { error: string } | null
   >(null);
+  const [notificationStatus, setNotificationStatus] =
+    useState<NotificationStatus | null>(null);
+  const [isSendingTest, setIsSendingTest] = useState(false);
+  const [testResult, setTestResult] =
+    useState<TestNotificationResult | { error: string } | null>(null);
   const [serverTime, setServerTime] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchNotificationStatus()
+      .then(setNotificationStatus)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchServerTime()
@@ -83,6 +98,10 @@ export function EmailNotificationsTile({
     sendMinute !== profile.reminder_send_minute;
 
   const noneSelected = !notify2 && !notify1 && !notifyOn && !notify1After;
+  const smtpConfigured = notificationStatus?.smtp_configured ?? false;
+  const appriseConfigured = notificationStatus?.apprise_configured ?? false;
+  const noChannelConfigured =
+    notificationStatus !== null && !smtpConfigured && !appriseConfigured;
 
   useEffect(() => {
     onDirtyChange(isDirty);
@@ -166,6 +185,19 @@ export function EmailNotificationsTile({
       setSendSummaryResult({ error: err instanceof Error ? err.message : tp("saveFailed") });
     } finally {
       setIsSendingSummary(false);
+    }
+  }
+
+  async function handleSendTest() {
+    setIsSendingTest(true);
+    setTestResult(null);
+    try {
+      const result = await sendTestNotification();
+      setTestResult(result);
+    } catch (err) {
+      setTestResult({ error: err instanceof Error ? err.message : tp("saveFailed") });
+    } finally {
+      setIsSendingTest(false);
     }
   }
 
@@ -263,7 +295,7 @@ export function EmailNotificationsTile({
         <div className="flex flex-col gap-2 pt-1 border-t border-slate-100 dark:border-slate-700">
           <button
             onClick={handleSendNow}
-            disabled={isSendingNow || !emailEnabled || isDirty}
+            disabled={isSendingNow || !emailEnabled || isDirty || noChannelConfigured}
             className="flex items-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition-all hover:border-green-300 hover:bg-green-50 hover:text-green-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
           >
             {isSendingNow ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
@@ -292,7 +324,7 @@ export function EmailNotificationsTile({
 
           <button
             onClick={handleSendSummary}
-            disabled={isSendingSummary || !emailEnabled || !monthlySummary || isDirty}
+            disabled={isSendingSummary || !emailEnabled || !monthlySummary || isDirty || noChannelConfigured}
             className="flex items-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition-all hover:border-green-300 hover:bg-green-50 hover:text-green-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
           >
             {isSendingSummary ? <Loader2 size={14} className="animate-spin" /> : <BarChart2 size={14} />}
@@ -313,6 +345,86 @@ export function EmailNotificationsTile({
           )}
         </div>
       </div>
+
+      <div className="flex flex-col gap-2 pt-1 border-t border-slate-100 dark:border-slate-700">
+        <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+          {tp("emailNotifications.channelsLabel")}
+        </p>
+
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm text-slate-600 dark:text-slate-400">
+            {tp("emailNotifications.smtpChannel")}
+          </span>
+          <span
+            className={
+              smtpConfigured
+                ? "text-sm text-green-600 dark:text-green-500"
+                : "text-sm text-slate-400 dark:text-slate-500"
+            }
+          >
+            {smtpConfigured
+              ? tp("emailNotifications.channelConfigured")
+              : tp("emailNotifications.channelNotConfigured")}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm text-slate-600 dark:text-slate-400">
+            {tp("emailNotifications.appriseChannel")}
+          </span>
+          <span
+            className={
+              appriseConfigured
+                ? "text-sm text-green-600 dark:text-green-500"
+                : "text-sm text-slate-400 dark:text-slate-500"
+            }
+          >
+            {appriseConfigured
+              ? tp("emailNotifications.channelConfigured")
+              : tp("emailNotifications.channelNotConfigured")}
+          </span>
+        </div>
+
+        {noChannelConfigured && (
+          <div className="flex items-start gap-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 px-3 py-2">
+            <AlertTriangle size={15} className="text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" />
+            <p className="text-sm text-yellow-700 dark:text-yellow-300">
+              {tp("emailNotifications.noChannelWarning")}
+            </p>
+          </div>
+        )}
+
+        <button
+          onClick={handleSendTest}
+          disabled={isSendingTest}
+          className="flex items-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition-all hover:border-green-300 hover:bg-green-50 hover:text-green-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
+        >
+          {isSendingTest ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          {isSendingTest
+            ? tp("emailNotifications.sendTestSending")
+            : tp("emailNotifications.sendTestButton")}
+        </button>
+
+        {testResult && "error" in testResult && (
+          <p className="text-sm text-red-600 dark:text-red-400">{testResult.error}</p>
+        )}
+        {testResult && "ok" in testResult && (
+          <p
+            className={
+              testResult.ok
+                ? "text-sm text-green-600 dark:text-green-500"
+                : "text-sm text-red-600 dark:text-red-400"
+            }
+          >
+            {testResult.ok
+              ? testResult.channel === "apprise"
+                ? tp("emailNotifications.testSentViaApprise")
+                : tp("emailNotifications.testSentViaEmail")
+              : (testResult.detail ?? tp("emailNotifications.testFailed"))}
+          </p>
+        )}
+      </div>
+
       {serverTime && (
         <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
           {tp("emailNotifications.serverTimeHint", { time: serverTime })}

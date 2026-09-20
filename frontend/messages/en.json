@@ -386,7 +386,18 @@
             "sendMonthlySummarySending": "Sending...",
             "sendMonthlySummarySent": "Monthly summary sent",
             "sendMonthlySummaryNoData": "No payments found for this month",
-            "serverTimeHint": "Reminders are sent based on server time (UTC). Current server time: {time}."
+            "serverTimeHint": "Reminders are sent based on server time (UTC). Current server time: {time}.",
+            "channelsLabel": "Delivery channels",
+            "smtpChannel": "Email (SMTP)",
+            "appriseChannel": "Apprise",
+            "channelConfigured": "Configured",
+            "channelNotConfigured": "Not configured",
+            "noChannelWarning": "No notification channel is configured. Notifications cannot be sent until one is set up.",
+            "sendTestButton": "Send test notification",
+            "sendTestSending": "Sending...",
+            "testSentViaApprise": "Sent via Apprise",
+            "testSentViaEmail": "Sent via email",
+            "testFailed": "Test notification failed"
         },
         "browserNotifications": {
             "title": "Browser Notifications",

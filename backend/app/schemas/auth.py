@@ -107,5 +107,16 @@ class SmtpStatusResponse(BaseModel):
     configured: bool
 
 
+class NotificationStatusResponse(BaseModel):
+    smtp_configured: bool
+    apprise_configured: bool
+
+
+class SendTestNotificationOut(BaseModel):
+    ok: bool
+    channel: str | None
+    detail: str | None
+
+
 class MessageResponse(BaseModel):
     message: str

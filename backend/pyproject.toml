@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.18.4",
     "fastapi>=0.136.3",
+    "httpx>=0.28",
     "openpyxl>=3.1.5",
     "pandas>=3.0.3",
     "bcrypt>=4.3.0",

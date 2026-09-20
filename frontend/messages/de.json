@@ -390,7 +390,18 @@
             "sendMonthlySummarySending": "Wird gesendet...",
             "sendMonthlySummarySent": "Monatliche Zusammenfassung gesendet",
             "sendMonthlySummaryNoData": "Keine Zahlungen für diesen Monat gefunden",
-            "serverTimeHint": "Erinnerungen werden nach Serverzeit (UTC) gesendet. Aktuelle Serverzeit: {time}."
+            "serverTimeHint": "Erinnerungen werden nach Serverzeit (UTC) gesendet. Aktuelle Serverzeit: {time}.",
+            "channelsLabel": "Versandkanäle",
+            "smtpChannel": "E-Mail (SMTP)",
+            "appriseChannel": "Apprise",
+            "channelConfigured": "Konfiguriert",
+            "channelNotConfigured": "Nicht konfiguriert",
+            "noChannelWarning": "Es ist kein Benachrichtigungskanal konfiguriert. Benachrichtigungen können erst gesendet werden, wenn ein Kanal eingerichtet ist.",
+            "sendTestButton": "Testbenachrichtigung senden",
+            "sendTestSending": "Wird gesendet...",
+            "testSentViaApprise": "Über Apprise gesendet",
+            "testSentViaEmail": "Per E-Mail gesendet",
+            "testFailed": "Testbenachrichtigung fehlgeschlagen"
         },
         "browserNotifications": {
             "title": "Browser-Benachrichtigungen",

@@ -3,6 +3,7 @@ PATCH /change-email, and 401 enforcement on protected routes."""
 
 import pytest
 
+from app.core.config import settings
 from tests.conftest import auth, register_and_login
 
 _PASSWORD = "pw123456"
@@ -306,8 +307,12 @@ def test_send_notification_no_smtp_returns_400(client):
     from unittest.mock import patch
 
     token = register_and_login(client, "notif_nosmtp@test.com", _PASSWORD)
-    with patch("app.routers.auth.settings") as mock_settings:
-        mock_settings.smtp_host = None
+    with (
+        patch.object(settings, "smtp_host", None),
+        patch.object(settings, "apprise_base_url", None),
+        patch.object(settings, "apprise_urls", None),
+        patch.object(settings, "apprise_key", None),
+    ):
         r = client.post("/auth/send-notification-now", headers=auth(token))
     assert r.status_code == 400
 
@@ -319,8 +324,7 @@ def test_send_notification_reminders_disabled_returns_zero(client):
     client.patch(
         "/auth/me", json={"email_reminders_enabled": False}, headers=auth(token)
     )
-    with patch("app.routers.auth.settings") as mock_settings:
-        mock_settings.smtp_host = "smtp.test"
+    with patch.object(settings, "smtp_host", "smtp.test"):
         r = client.post("/auth/send-notification-now", headers=auth(token))
     assert r.status_code == 200
     assert r.json()["sent"] == 0
@@ -331,10 +335,9 @@ def test_send_notification_calls_service_and_returns_count(client):
 
     token = register_and_login(client, "notif_ok@test.com", _PASSWORD)
     with (
-        patch("app.routers.auth.settings") as mock_settings,
+        patch.object(settings, "smtp_host", "smtp.test"),
         patch("app.routers.auth.send_reminders_for_user", return_value=2) as mock_send,
     ):
-        mock_settings.smtp_host = "smtp.test"
         r = client.post("/auth/send-notification-now", headers=auth(token))
     assert r.status_code == 200
     assert r.json()["sent"] == 2
@@ -350,8 +353,12 @@ def test_send_monthly_summary_no_smtp_returns_400(client):
     from unittest.mock import patch
 
     token = register_and_login(client, "summary_nosmtp@test.com", _PASSWORD)
-    with patch("app.routers.auth.settings") as mock_settings:
-        mock_settings.smtp_host = None
+    with (
+        patch.object(settings, "smtp_host", None),
+        patch.object(settings, "apprise_base_url", None),
+        patch.object(settings, "apprise_urls", None),
+        patch.object(settings, "apprise_key", None),
+    ):
         r = client.post("/auth/send-monthly-summary-now", headers=auth(token))
     assert r.status_code == 400
 
@@ -363,8 +370,7 @@ def test_send_monthly_summary_disabled_returns_false(client):
     client.patch(
         "/auth/me", json={"monthly_summary_enabled": False}, headers=auth(token)
     )
-    with patch("app.routers.auth.settings") as mock_settings:
-        mock_settings.smtp_host = "smtp.test"
+    with patch.object(settings, "smtp_host", "smtp.test"):
         r = client.post("/auth/send-monthly-summary-now", headers=auth(token))
     assert r.status_code == 200
     assert r.json()["sent"] is False
@@ -379,8 +385,7 @@ def test_send_monthly_summary_master_toggle_off_returns_false(client):
     client.patch(
         "/auth/me", json={"email_reminders_enabled": False}, headers=auth(token)
     )
-    with patch("app.routers.auth.settings") as mock_settings:
-        mock_settings.smtp_host = "smtp.test"
+    with patch.object(settings, "smtp_host", "smtp.test"):
         r = client.post("/auth/send-monthly-summary-now", headers=auth(token))
     assert r.status_code == 200
     assert r.json()["sent"] is False
@@ -391,12 +396,11 @@ def test_send_monthly_summary_calls_service(client):
 
     token = register_and_login(client, "summary_ok@test.com", _PASSWORD)
     with (
-        patch("app.routers.auth.settings") as mock_settings,
+        patch.object(settings, "smtp_host", "smtp.test"),
         patch(
             "app.routers.auth.send_monthly_summary_for_user", return_value=True
         ) as mock_send,
     ):
-        mock_settings.smtp_host = "smtp.test"
         r = client.post("/auth/send-monthly-summary-now", headers=auth(token))
     assert r.status_code == 200
     assert r.json()["sent"] is True
@@ -412,10 +416,9 @@ def test_send_monthly_summary_now_does_not_set_flag(client_db):
     client, db = client_db
     token = register_and_login(client, "summary_flag@test.com", _PASSWORD)
     with (
-        patch("app.routers.auth.settings") as mock_settings,
+        patch.object(settings, "smtp_host", "smtp.test"),
         patch("app.routers.auth.send_monthly_summary_for_user", return_value=True),
     ):
-        mock_settings.smtp_host = "smtp.test"
         r = client.post("/auth/send-monthly-summary-now", headers=auth(token))
     assert r.status_code == 200
     assert r.json()["sent"] is True
