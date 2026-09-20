@@ -201,7 +201,7 @@ def test_forgot_password_smtp_failure_still_returns_200(
 ) -> None:
     """SMTP exception must not propagate — enumeration guarantee must hold."""
     client, db = client_db
-    register_and_login(client, "smtpfail@example.com", "password123")
+    register_and_login(client, "smtpfail@example.com", "pw-smtp-fail-1")
 
     with (
         patch("app.routers.auth.settings") as mock_settings,
