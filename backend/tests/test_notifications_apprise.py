@@ -10,15 +10,16 @@ import httpx
 import pytest
 
 import app.models.bill  # noqa: F401 — register models
+import app.models.category  # noqa: F401
 import app.models.user  # noqa: F401
 from app.core.config import settings
 from app.models.bill import (
-    BillCategory,
     BillFrequency,
     BillTemplate,
     PaymentInstance,
     PaymentStatus,
 )
+from app.models.category import Category
 from app.models.user import User
 from app.services import notifications
 from app.services.email import build_monthly_summary_text, build_reminder_text
@@ -287,12 +288,15 @@ def _make_reminder_fixture(db, email: str) -> tuple[User, int]:
     )
     db.add(user)
     db.flush()
+    category = Category(user_id=user.id, key="utilities")
+    db.add(category)
+    db.flush()
     bill = BillTemplate(
         name="Internet",
         frequency=BillFrequency.monthly,
         amount=Decimal("99.99"),
         currency="PLN",
-        category=BillCategory.utilities,
+        category_id=category.id,
         user_id=user.id,
     )
     db.add(bill)
@@ -374,12 +378,15 @@ def test_monthly_summary_uses_apprise_when_configured(db_session):
     )
     db_session.add(user)
     db_session.flush()
+    category = Category(user_id=user.id, key="utilities")
+    db_session.add(category)
+    db_session.flush()
     bill = BillTemplate(
         name="Internet",
         frequency=BillFrequency.monthly,
         amount=Decimal("99.99"),
         currency="PLN",
-        category=BillCategory.utilities,
+        category_id=category.id,
         user_id=user.id,
     )
     db_session.add(bill)

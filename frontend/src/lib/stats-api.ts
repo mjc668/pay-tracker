@@ -1,5 +1,5 @@
 import { apiFetch } from "./api";
-import type { BillCategory } from "./bills-api";
+import type { Category } from "./categories-api";
 import type { PaymentStatus } from "./payments-api";
 
 export interface StatsSummary {
@@ -25,7 +25,7 @@ export interface ForecastPoint {
 }
 
 export interface CategoryStat {
-  category: BillCategory;
+  category: Category;
   paid_total: string;
   due_total: string;
 }

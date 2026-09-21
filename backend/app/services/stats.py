@@ -13,14 +13,15 @@ from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
 from app.models.bill import (
-    BillCategory,
     BillFrequency,
     BillTemplate,
     PaymentInstance,
     PaymentStatus,
 )
+from app.models.category import Category
 from app.models.payment import Payment
 from app.models.user import User
+from app.schemas.category import CategoryOut
 from app.schemas.stats import (
     AttentionItem,
     CategoryStat,
@@ -29,6 +30,7 @@ from app.schemas.stats import (
     StatsSummary,
     TrendPoint,
 )
+from app.services.categories import category_label
 from app.services.recurrence import _occurrences_in_period
 
 DEFAULT_CURRENCY = "PLN"
@@ -203,11 +205,15 @@ def _forecast(
 
 
 def _by_category(
-    db: Session, user_id: int, currency: str, periods: list[str]
+    db: Session,
+    user_id: int,
+    currency: str,
+    periods: list[str],
+    language: str | None,
 ) -> list[CategoryStat]:
     paid_period = func.to_char(Payment.paid_on, "YYYY-MM")
     paid_rows = (
-        db.query(BillTemplate.category, func.coalesce(func.sum(Payment.amount), 0))
+        db.query(BillTemplate.category_id, func.coalesce(func.sum(Payment.amount), 0))
         .select_from(Payment)
         .join(PaymentInstance, Payment.instance_id == PaymentInstance.id)
         .join(BillTemplate, PaymentInstance.bill_id == BillTemplate.id)
@@ -217,12 +223,12 @@ def _by_category(
             PaymentInstance.is_deleted.is_(False),
             paid_period.in_(periods),
         )
-        .group_by(BillTemplate.category)
+        .group_by(BillTemplate.category_id)
         .all()
     )
     due_rows = (
         db.query(
-            BillTemplate.category,
+            BillTemplate.category_id,
             func.coalesce(func.sum(PaymentInstance.amount), 0),
         )
         .select_from(PaymentInstance)
@@ -233,22 +239,41 @@ def _by_category(
             PaymentInstance.is_deleted.is_(False),
             PaymentInstance.period.in_(periods),
         )
-        .group_by(BillTemplate.category)
+        .group_by(BillTemplate.category_id)
         .all()
     )
 
-    paid_by_category = {BillCategory(row[0]): Decimal(row[1]) for row in paid_rows}
-    due_by_category = {BillCategory(row[0]): Decimal(row[1]) for row in due_rows}
+    paid_by_category = {int(row[0]): Decimal(row[1]) for row in paid_rows}
+    due_by_category = {int(row[0]): Decimal(row[1]) for row in due_rows}
 
     stats: list[CategoryStat] = []
-    for category in set(paid_by_category) | set(due_by_category):
-        paid = paid_by_category.get(category, Decimal("0"))
-        due = due_by_category.get(category, Decimal("0"))
+    category_ids = set(paid_by_category) | set(due_by_category)
+    if not category_ids:
+        return stats
+
+    categories = {
+        category.id: category
+        for category in db.query(Category).filter(Category.id.in_(category_ids)).all()
+    }
+    for category_id in category_ids:
+        paid = paid_by_category.get(category_id, Decimal("0"))
+        due = due_by_category.get(category_id, Decimal("0"))
         if paid == 0 and due == 0:
             continue
-        stats.append(CategoryStat(category=category, paid_total=paid, due_total=due))
+        category = categories.get(category_id)
+        if category is None:  # pragma: no cover — FK guarantees a row
+            continue
+        stats.append(
+            CategoryStat(
+                category=CategoryOut.model_validate(category),
+                paid_total=paid,
+                due_total=due,
+            )
+        )
 
-    stats.sort(key=lambda item: (-item.paid_total, item.category.value))
+    stats.sort(
+        key=lambda item: (-item.paid_total, category_label(language, item.category))
+    )
     return stats
 
 
@@ -310,6 +335,8 @@ def build_stats_overview(
         summary=_summary(db, user.id, currency, month, today),
         trend=_trend(db, user.id, currency, periods),
         forecast=_forecast(db, user.id, currency, month),
-        by_category=_by_category(db, user.id, currency, periods),
+        by_category=_by_category(
+            db, user.id, currency, periods, user.language_preference
+        ),
         attention=_attention(db, user.id, currency, today),
     )

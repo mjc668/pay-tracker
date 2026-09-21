@@ -11,16 +11,21 @@ import {
 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import BillTemplateForm from "./BillTemplateForm";
+import type { Category } from "@/lib/categories-api";
 import {
   normalizeBillFrequency,
   type BillTemplateOut,
   type BillTemplateUpdate,
 } from "@/lib/bills-api";
-import { CATEGORY_BORDER } from "@/lib/categories";
 
 interface Props {
   template: BillTemplateOut;
   isExpanded: boolean;
+  /** Non-archived categories offered by the edit form's picker. */
+  categories: Category[];
+  onCategoryCreated: (category: Category) => void;
+  /** Positional palette class for this bill's category. */
+  colorClass: string;
   onEditToggle: () => void;
   onSave: (data: BillTemplateUpdate) => Promise<void>;
   onArchive: () => void;
@@ -63,6 +68,9 @@ function formatDueLabel(template: BillTemplateOut, locale: string): string | nul
 export default function BillTemplateRow({
   template,
   isExpanded,
+  categories,
+  onCategoryCreated,
+  colorClass,
   onEditToggle,
   onSave,
   onArchive,
@@ -77,7 +85,7 @@ export default function BillTemplateRow({
   // Paused overrides category color with amber
   const leftBorder = template.is_paused
     ? "border-l-amber-400 dark:border-l-amber-500"
-    : CATEGORY_BORDER[template.category];
+    : colorClass;
 
   return (
     <div
@@ -173,7 +181,7 @@ export default function BillTemplateRow({
           <BillTemplateForm
             initial={{
               name: template.name,
-              category: template.category,
+              category_id: template.category.id,
               frequency: template.frequency,
               interval_count: template.interval_count,
               start_date: template.start_date,
@@ -184,6 +192,9 @@ export default function BillTemplateRow({
               notes: template.notes,
               is_paused: template.is_paused,
             }}
+            initialCategory={template.category}
+            categories={categories}
+            onCategoryCreated={onCategoryCreated}
             onSave={onSave}
             onCancel={onEditToggle}
           />

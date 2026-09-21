@@ -10,6 +10,7 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.bill import BillTemplate
+    from app.models.category import Category
 
 
 class User(Base):
@@ -59,5 +60,8 @@ class User(Base):
     )
 
     bills: Mapped[list[BillTemplate]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    categories: Mapped[list[Category]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

@@ -129,7 +129,7 @@ def test_restore_happy_path(client):
     client.get("/bills/payments", headers=auth(tok))
 
     backup = client.get("/export/json", headers=auth(tok)).json()
-    assert backup["schema_version"] == 5
+    assert backup["schema_version"] == 6
 
     r = _upload(client, tok, backup)
     assert r.status_code == 200
@@ -295,7 +295,7 @@ def test_round_trip_field_level(client):
     assert r.status_code == 200
 
     backup = client.get("/export/json", headers=auth(tok)).json()
-    assert backup["schema_version"] == 5
+    assert backup["schema_version"] == 6
     n_templates = len(backup["bill_templates"])
     n_instances = len(backup["payment_instances"])
     n_payments = len(backup["payments"])
@@ -490,7 +490,7 @@ def test_v3_backup_synthesizes_ledger_payments(client):
     assert r.json()["restored_instances"] == 1
 
     after = client.get("/export/json", headers=auth(tok)).json()
-    assert after["schema_version"] == 5
+    assert after["schema_version"] == 6
     assert len(after["payments"]) == 1
     payment = after["payments"][0]
     assert payment["instance_id"] == after["payment_instances"][0]["id"]
@@ -679,7 +679,7 @@ def test_v5_round_trip_weekly_interval_and_start_date(client):
     assert r.status_code == 201, r.text
 
     backup = client.get("/export/json", headers=auth(tok)).json()
-    assert backup["schema_version"] == 5
+    assert backup["schema_version"] == 6
     template = backup["bill_templates"][0]
     assert template["frequency"] == "weekly"
     assert template["interval_count"] == 2
@@ -693,3 +693,118 @@ def test_v5_round_trip_weekly_interval_and_start_date(client):
     assert bills[0]["frequency"] == "weekly"
     assert bills[0]["interval_count"] == 2
     assert bills[0]["start_date"] == "2026-01-05"
+
+
+# ---------------------------------------------------------------------------
+# v6 schema: categories export as key (defaults) or name (customs)
+# ---------------------------------------------------------------------------
+
+
+def _create_bill_with_category(
+    client, token: str, name: str, category_id: int, **overrides
+):
+    payload = {
+        **_BILL,
+        "name": name,
+        "category_id": category_id,
+        **overrides,
+    }
+    payload.pop("category", None)
+    r = client.post("/bills", json=payload, headers=auth(token))
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_v6_export_default_category_as_key(client):
+    tok = register_and_login(client, "v6key@test.com")
+    cats = client.get("/categories", headers=auth(tok)).json()
+    utilities = next(c for c in cats if c["key"] == "utilities")
+
+    _create_bill_with_category(client, tok, "Power", utilities["id"])
+
+    backup = client.get("/export/json", headers=auth(tok)).json()
+    assert backup["schema_version"] == 6
+    assert backup["bill_templates"][0]["category"] == "utilities"
+
+
+def test_v6_round_trip_custom_category_name(client):
+    tok = register_and_login(client, "v6custom@test.com")
+    r = client.post("/categories", json={"name": "Streaming"}, headers=auth(tok))
+    assert r.status_code == 201
+    custom = r.json()
+
+    bill = _create_bill_with_category(client, tok, "Netflix", custom["id"])
+    assert bill["category"]["name"] == "Streaming"
+
+    backup = client.get("/export/json", headers=auth(tok)).json()
+    assert backup["bill_templates"][0]["category"] == "Streaming"
+
+    r = _upload(client, tok, backup)
+    assert r.status_code == 200, r.text
+
+    bills = client.get("/bills", headers=auth(tok)).json()
+    assert bills[0]["category"]["name"] == "Streaming"
+    assert bills[0]["category"]["key"] is None
+
+    cats = client.get("/categories", headers=auth(tok)).json()
+    assert sum(1 for c in cats if (c["name"] or "").lower() == "streaming") == 1
+
+
+def test_v6_rename_of_default_survives_restore(client):
+    tok = register_and_login(client, "v6renamed@test.com")
+    cats = client.get("/categories", headers=auth(tok)).json()
+    utilities = next(c for c in cats if c["key"] == "utilities")
+    r = client.patch(
+        f"/categories/{utilities['id']}", json={"name": "Prąd"}, headers=auth(tok)
+    )
+    assert r.status_code == 200
+    _create_bill_with_category(client, tok, "Power", utilities["id"])
+
+    backup = client.get("/export/json", headers=auth(tok)).json()
+    # Defaults always export their key so the rename resolves to the same row.
+    assert backup["bill_templates"][0]["category"] == "utilities"
+
+    r = _upload(client, tok, backup)
+    assert r.status_code == 200, r.text
+    bills = client.get("/bills", headers=auth(tok)).json()
+    assert bills[0]["category"]["key"] == "utilities"
+    assert bills[0]["category"]["name"] == "Prąd"
+
+
+def test_v6_restore_creates_missing_default_key(client):
+    tok = register_and_login(client, "v6missingkey@test.com")
+    cats = client.get("/categories", headers=auth(tok)).json()
+    insurance = next(c for c in cats if c["key"] == "insurance")
+    r = client.delete(f"/categories/{insurance['id']}", headers=auth(tok))
+    assert r.status_code == 204
+
+    payload = _make_backup([_template_dict(category="insurance")], [])
+    r = _upload(client, tok, payload)
+    assert r.status_code == 200, r.text
+
+    bills = client.get("/bills", headers=auth(tok)).json()
+    assert bills[0]["category"]["key"] == "insurance"
+    assert bills[0]["category"]["name"] is None
+
+
+def test_v6_restore_null_category_maps_to_other(client):
+    tok = register_and_login(client, "v6null@test.com")
+
+    payload = _make_backup([_template_dict(category=None)], [])
+    r = _upload(client, tok, payload)
+    assert r.status_code == 200, r.text
+
+    bills = client.get("/bills", headers=auth(tok)).json()
+    assert bills[0]["category"]["key"] == "other"
+
+
+def test_restore_never_deletes_user_categories(client):
+    tok = register_and_login(client, "v6keep@test.com")
+    r = client.post("/categories", json={"name": "Pets"}, headers=auth(tok))
+    assert r.status_code == 201
+
+    r = _upload(client, tok, _make_backup([], []))
+    assert r.status_code == 200
+
+    cats = client.get("/categories", headers=auth(tok)).json()
+    assert "Pets" in [c["name"] for c in cats]

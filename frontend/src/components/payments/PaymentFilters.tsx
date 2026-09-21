@@ -2,17 +2,19 @@
 
 import { Search, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { BillCategory } from "@/lib/bills-api";
+import { categoryLabel, type Category } from "@/lib/categories-api";
+import { categoryValue } from "@/lib/categories";
 
 export type PaymentStatusFilter = "all" | "unpaid" | "overdue" | "paid";
 
 interface Props {
   status: PaymentStatusFilter;
-  category: BillCategory | "all";
+  /** Option value from `categoryValue`, or "all". */
+  category: string;
   search: string;
-  categories: BillCategory[];
+  categories: Category[];
   onStatusChange: (status: PaymentStatusFilter) => void;
-  onCategoryChange: (category: BillCategory | "all") => void;
+  onCategoryChange: (category: string) => void;
   onSearchChange: (search: string) => void;
   onClear: () => void;
   hasActiveFilters: boolean;
@@ -35,7 +37,7 @@ export default function PaymentFilters({
   hasActiveFilters,
 }: Props) {
   const t = useTranslations("PaymentsPage");
-  const tCategories = useTranslations("Categories");
+  const tRoot = useTranslations();
 
   return (
     <div
@@ -67,13 +69,13 @@ export default function PaymentFilters({
           <select
             id="payment-filter-category"
             value={category}
-            onChange={(e) => onCategoryChange(e.target.value as BillCategory | "all")}
+            onChange={(e) => onCategoryChange(e.target.value)}
             className={selectClass}
           >
             <option value="all">{t("filterAllCategories")}</option>
             {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {tCategories(cat)}
+              <option key={cat.id} value={categoryValue(cat)}>
+                {categoryLabel(cat, tRoot)}
               </option>
             ))}
           </select>

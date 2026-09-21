@@ -14,7 +14,6 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import current_user
 from app.models.bill import (
-    BillCategory,
     BillFrequency,
     BillTemplate,
     PaymentInstance,
@@ -30,17 +29,9 @@ from app.schemas.bill import (
     ExportSummaryOut,
     RestoreSnapshotOut,
 )
+from app.services.categories import category_label, resolve_backup_value
 
 router = APIRouter(prefix="/export", tags=["export"])
-
-_VALID_CATEGORIES = {c.value for c in BillCategory}
-
-
-def _coerce_category(raw: str | None) -> BillCategory:
-    if raw in _VALID_CATEGORIES:
-        return BillCategory(raw)
-    return BillCategory.other
-
 
 _COLUMNS = [
     "Bill",
@@ -64,7 +55,9 @@ def export_xlsx(
 ):
     instances = (
         db.query(PaymentInstance)
-        .options(selectinload(PaymentInstance.template))
+        .options(
+            selectinload(PaymentInstance.template).selectinload(BillTemplate.category)
+        )
         .join(BillTemplate, PaymentInstance.bill_id == BillTemplate.id)
         .filter(
             BillTemplate.user_id == me.id,
@@ -76,13 +69,14 @@ def export_xlsx(
     )
 
     # Index instances by month number (1–12)
+    language = me.language_preference
     by_month: dict[int, list[dict]] = {m: [] for m in range(1, 13)}
     for i in instances:
         month = int(i.period[5:7])
         by_month[month].append(
             {
                 "Bill": i.template.name,
-                "Category": i.template.category,
+                "Category": category_label(language, i.template.category),
                 "Period": i.period,
                 "Due Date": i.due_date.isoformat(),
                 "Amount": float(i.amount),
@@ -118,7 +112,12 @@ def export_xlsx(
 def _build_backup_arrays(db: Session, user_id: int) -> dict:
     """Serialize a user's bill_templates/payment_instances into the backup shape
     shared by GET /export/json and the pre-restore snapshot."""
-    templates = db.query(BillTemplate).filter(BillTemplate.user_id == user_id).all()
+    templates = (
+        db.query(BillTemplate)
+        .options(selectinload(BillTemplate.category))
+        .filter(BillTemplate.user_id == user_id)
+        .all()
+    )
     template_ids = [t.id for t in templates]
     instances = (
         db.query(PaymentInstance)
@@ -144,7 +143,7 @@ def _build_backup_arrays(db: Session, user_id: int) -> dict:
             {
                 "id": t.id,
                 "name": t.name,
-                "category": t.category,
+                "category": t.category.key or t.category.name,
                 "frequency": t.frequency,
                 "interval_count": t.interval_count,
                 "start_date": t.start_date.isoformat() if t.start_date else None,
@@ -196,7 +195,7 @@ def export_json(
     me: User = Depends(current_user),
 ):
     payload = {
-        "schema_version": 5,
+        "schema_version": 6,
         "exported_by": me.email,
         "exported_at": datetime.now(timezone.utc).isoformat(),
         **_build_backup_arrays(db, me.id),
@@ -286,10 +285,17 @@ def _apply_backup(db: Session, user_id: int, backup: BackupPayload) -> tuple[int
         )
 
     id_map: dict[int, int] = {}
+    category_ids: dict[str | None, int] = {}
     for bt in backup.bill_templates:
+        if bt.category not in category_ids:
+            # Resolve per distinct value, case-insensitively; never deletes
+            # the user's existing categories.
+            category_ids[bt.category] = resolve_backup_value(
+                db, user_id, bt.category
+            ).id
         template_obj = BillTemplate(
             name=bt.name,
-            category=_coerce_category(bt.category),
+            category_id=category_ids[bt.category],
             frequency=BillFrequency(bt.frequency),
             interval_count=bt.interval_count,
             start_date=date.fromisoformat(bt.start_date) if bt.start_date else None,
@@ -359,7 +365,7 @@ def restore_json(
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="Invalid JSON")
 
-    if raw.get("schema_version") not in {2, 3, 4, 5}:
+    if raw.get("schema_version") not in {2, 3, 4, 5, 6}:
         raise HTTPException(status_code=422, detail="Unsupported schema version")
 
     try:
@@ -389,7 +395,7 @@ def restore_json(
     )
     if has_existing_bills:
         snapshot_payload = {
-            "schema_version": 5,
+            "schema_version": 6,
             **_build_backup_arrays(db, me.id),
         }
         db.query(RestoreSnapshot).filter(RestoreSnapshot.user_id == me.id).delete(

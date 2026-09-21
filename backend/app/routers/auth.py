@@ -38,6 +38,7 @@ from app.schemas.auth import (
     UserProfileUpdate,
 )
 from app.services import notifications
+from app.services.categories import ensure_default_categories
 from app.services.email import send_password_reset_email, send_test_email
 from app.services.reminder_job import (
     send_monthly_summary_for_user,
@@ -94,6 +95,8 @@ def register(
         raise HTTPException(status_code=409, detail="Email already registered")
     user = User(email=body.email, password_hash=hash_password(body.password))
     db.add(user)
+    db.flush()
+    ensure_default_categories(db, user)
     db.commit()
     db.refresh(user)
     token = create_access_token(str(user.id), token_version=user.token_version)

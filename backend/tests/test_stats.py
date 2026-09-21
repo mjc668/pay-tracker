@@ -491,7 +491,7 @@ def test_by_category_aggregation_and_ordering(client_db):
     _pay(client, token, u_cur.id, "150.00", paid_on=today.isoformat())
 
     cats = _overview(client, token)["by_category"]
-    assert [c["category"] for c in cats] == ["utilities", "housing"]
+    assert [c["category"]["key"] for c in cats] == ["utilities", "housing"]
     assert _dec(cats[0]["paid_total"]) == Decimal("150.00")
     assert _dec(cats[0]["due_total"]) == Decimal("200.00")
     assert _dec(cats[1]["paid_total"]) == Decimal("50.00")
@@ -534,7 +534,7 @@ def test_by_category_tie_break_and_zero_rows_omitted(client_db):
     _pay(client, token, u.id, "100.00", paid_on=today.isoformat())
 
     cats = _overview(client, token)["by_category"]
-    assert [c["category"] for c in cats] == ["housing", "utilities"]
+    assert [c["category"]["key"] for c in cats] == ["housing", "utilities"]
 
 
 # ---------------------------------------------------------------------------
@@ -719,7 +719,7 @@ def test_deleted_instances_excluded_everywhere(client_db):
     assert [a["instance_id"] for a in data["attention"]] == [active.id]
     assert all(_dec(p["paid_total"]) == Decimal("0") for p in data["trend"])
     assert len(data["by_category"]) == 1
-    assert data["by_category"][0]["category"] == "utilities"
+    assert data["by_category"][0]["category"]["key"] == "utilities"
     assert _dec(data["by_category"][0]["paid_total"]) == Decimal("0")
     assert _dec(data["by_category"][0]["due_total"]) == Decimal("100.00")
 

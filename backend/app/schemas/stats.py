@@ -3,7 +3,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
-from app.models.bill import BillCategory, PaymentStatus
+from app.models.bill import PaymentStatus
+from app.schemas.category import CategoryOut
 
 
 class StatsSummary(BaseModel):
@@ -36,7 +37,7 @@ class ForecastPoint(BaseModel):
 
 
 class CategoryStat(BaseModel):
-    category: BillCategory
+    category: CategoryOut
     paid_total: Decimal
     due_total: Decimal
 

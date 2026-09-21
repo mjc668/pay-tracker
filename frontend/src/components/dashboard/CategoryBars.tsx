@@ -2,6 +2,8 @@
 
 import { useTranslations, useLocale } from "next-intl";
 import type { CategoryStat } from "@/lib/stats-api";
+import { categoryLabel } from "@/lib/categories-api";
+import { categoryColor } from "@/lib/categories";
 
 interface Props {
   categories: CategoryStat[];
@@ -15,7 +17,7 @@ function parseAmount(value: string): number {
 
 export default function CategoryBars({ categories, currency }: Props) {
   const t = useTranslations("Dashboard");
-  const tCategories = useTranslations("Categories");
+  const tRoot = useTranslations();
   const locale = useLocale();
 
   const amountFormatter = new Intl.NumberFormat(locale, {
@@ -34,7 +36,10 @@ export default function CategoryBars({ categories, currency }: Props) {
   const sorted = [...categories].sort((a, b) => {
     const paidDiff = parseAmount(b.paid_total) - parseAmount(a.paid_total);
     if (paidDiff !== 0) return paidDiff;
-    return a.category.localeCompare(b.category);
+    return categoryLabel(a.category, tRoot).localeCompare(
+      categoryLabel(b.category, tRoot),
+      locale,
+    );
   });
 
   const scale = Math.max(
@@ -46,16 +51,16 @@ export default function CategoryBars({ categories, currency }: Props) {
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      {sorted.map((item) => {
+      {sorted.map((item, index) => {
         const paid = parseAmount(item.paid_total);
         const due = parseAmount(item.due_total);
         const paidPct = scale > 0 ? (paid / scale) * 100 : 0;
         const duePct = scale > 0 ? (due / scale) * 100 : 0;
         return (
-          <div key={item.category}>
+          <div key={item.category.id} className={`border-l-4 pl-3 ${categoryColor(index)}`}>
             <div className="mb-1.5 flex items-baseline justify-between gap-3 text-sm">
               <span className="font-medium text-slate-700 dark:text-slate-200">
-                {tCategories(item.category)}
+                {categoryLabel(item.category, tRoot)}
               </span>
               <span className="flex shrink-0 items-baseline gap-3 text-xs tabular-nums text-slate-400 dark:text-slate-500">
                 <span className="text-emerald-600 dark:text-emerald-400">

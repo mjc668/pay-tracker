@@ -21,20 +21,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
+    from app.models.category import Category
     from app.models.payment import Payment
     from app.models.user import User
-
-
-class BillCategory(str, Enum):
-    housing = "housing"
-    utilities = "utilities"
-    insurance = "insurance"
-    subscriptions = "subscriptions"
-    entertainment = "entertainment"
-    transport = "transport"
-    healthcare = "healthcare"
-    education = "education"
-    other = "other"
 
 
 class BillFrequency(str, Enum):
@@ -57,7 +46,9 @@ class BillTemplate(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[BillCategory] = mapped_column(String(50), nullable=False)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id"), nullable=False
+    )
     frequency: Mapped[BillFrequency] = mapped_column(String(20), nullable=False)
     interval_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
@@ -81,6 +72,7 @@ class BillTemplate(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="bills")
+    category: Mapped[Category] = relationship(back_populates="bills")
     instances: Mapped[list["PaymentInstance"]] = relationship(
         back_populates="template", cascade="all, delete-orphan"
     )

@@ -168,6 +168,7 @@
         "startDateRequired": "Datum der ersten Zahlung ist erforderlich.",
         "categoryLabel": "Kategorie",
         "categoryRequired": "Kategorie ist erforderlich.",
+        "categoryAdd": "Neue hinzufügen…",
         "notesLabel": "Notizen",
         "notesPlaceholder": "Optionale Notizen",
         "pauseRecurrence": "Wiederholung pausieren (keine neuen Instanzen)",
@@ -216,7 +217,12 @@
         "heading": "Tag des Monats",
         "shortMonthWarning": "Manche Monate haben weniger Tage — die Rechnung fällt dann auf den letzten verfügbaren Tag."
     },
-    "CategoryCombobox": {"placeholder": "z. B. Nebenkosten"},
+    "CategoryCombobox": {
+        "placeholder": "z. B. Nebenkosten",
+        "addConfirm": "Hinzufügen",
+        "addCancel": "Abbrechen",
+        "addFailed": "Die Kategorie konnte nicht erstellt werden."
+    },
     "PaymentsPage": {
         "title": "Zahlungen",
         "subtitle": "Verfolgen und markieren Sie Ihre Rechnungen Monat für Monat.",
@@ -416,6 +422,25 @@
             "toggle": "Browser-Benachrichtigungen aktivieren",
             "osHint": "Keine Benachrichtigungen sichtbar? Prüfen Sie die Systembenachrichtigungseinstellungen (macOS: Systemeinstellungen → Mitteilungen).",
             "blockedWarning": "Browser-Benachrichtigungen sind blockiert. Aktivieren Sie sie in den Browser- oder Betriebssystemeinstellungen."
+        },
+        "categories": {
+            "title": "Kategorien",
+            "description": "Fügen Sie Kategorien zur Gruppierung Ihrer Rechnungen hinzu, benennen Sie sie um, archivieren oder löschen Sie sie.",
+            "addLabel": "Neue Kategorie",
+            "addPlaceholder": "z. B. Haustiere",
+            "add": "Hinzufügen",
+            "adding": "Wird hinzugefügt…",
+            "rename": "Umbenennen",
+            "save": "Speichern",
+            "cancel": "Abbrechen",
+            "archive": "Archivieren",
+            "unarchive": "Wiederherstellen",
+            "delete": "Löschen",
+            "deleteConfirm": "„{name}“ löschen?",
+            "deleteBlocked": "Diese Kategorie wird von vorhandenen Rechnungen verwendet und kann nicht gelöscht werden. Archivieren Sie sie stattdessen.",
+            "archived": "Archiviert",
+            "error": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
+            "loadError": "Kategorien konnten nicht geladen werden."
         },
         "backup": {
             "title": "Daten sichern",

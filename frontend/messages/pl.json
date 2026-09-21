@@ -168,6 +168,7 @@
         "startDateRequired": "Data pierwszej płatności jest wymagana.",
         "categoryLabel": "Kategoria",
         "categoryRequired": "Kategoria jest wymagana.",
+        "categoryAdd": "Dodaj nową…",
         "notesLabel": "Notatki",
         "notesPlaceholder": "Opcjonalne notatki",
         "pauseRecurrence": "Wstrzymaj cykl (brak nowych instancji)",
@@ -216,7 +217,12 @@
         "heading": "Dzień miesiąca",
         "shortMonthWarning": "Niektóre miesiące mają mniej dni — rachunek przypadnie na ostatni dostępny dzień."
     },
-    "CategoryCombobox": {"placeholder": "np. Media"},
+    "CategoryCombobox": {
+        "placeholder": "np. Media",
+        "addConfirm": "Dodaj",
+        "addCancel": "Anuluj",
+        "addFailed": "Nie udało się utworzyć kategorii."
+    },
     "PaymentsPage": {
         "title": "Płatności",
         "subtitle": "Śledź i oznaczaj swoje rachunki miesiąc po miesiącu.",
@@ -408,6 +414,25 @@
             "toggle": "Włącz powiadomienia przeglądarki",
             "osHint": "Nie widzisz powiadomień? Sprawdź ustawienia powiadomień systemu (macOS: Ustawienia systemowe → Powiadomienia).",
             "blockedWarning": "Powiadomienia przeglądarki są zablokowane. Włącz je w ustawieniach przeglądarki lub systemu operacyjnego."
+        },
+        "categories": {
+            "title": "Kategorie",
+            "description": "Dodawaj, zmieniaj nazwy, archiwizuj lub usuwaj kategorie używane do grupowania rachunków.",
+            "addLabel": "Nowa kategoria",
+            "addPlaceholder": "np. Zwierzęta",
+            "add": "Dodaj",
+            "adding": "Dodawanie…",
+            "rename": "Zmień nazwę",
+            "save": "Zapisz",
+            "cancel": "Anuluj",
+            "archive": "Archiwizuj",
+            "unarchive": "Przywróć",
+            "delete": "Usuń",
+            "deleteConfirm": "Usunąć „{name}”?",
+            "deleteBlocked": "Ta kategoria jest używana przez istniejące rachunki i nie można jej usunąć. Zamiast tego ją zarchiwizuj.",
+            "archived": "Zarchiwizowana",
+            "error": "Coś poszło nie tak. Spróbuj ponownie.",
+            "loadError": "Nie udało się załadować kategorii."
         },
         "backup": {
             "title": "Kopia zapasowa",

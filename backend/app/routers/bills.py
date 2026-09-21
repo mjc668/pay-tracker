@@ -19,6 +19,11 @@ from app.schemas.bill import (
     PaymentCreate,
     PaymentInstanceOut,
 )
+from app.services.categories import (
+    CategoryError,
+    get_for_user as get_category_for_user,
+    resolve_legacy_key,
+)
 from app.services.payments import (
     clear_payments,
     delete_payment as delete_payment_record,
@@ -36,6 +41,37 @@ from app.services.recurrence import (
 )
 
 router = APIRouter(prefix="/bills", tags=["bills"])
+
+
+def _resolve_category(
+    db: Session,
+    me: User,
+    category_id: int | None,
+    legacy_key: str | None,
+    *,
+    allow_archived_id: int | None = None,
+):
+    """Resolve a bill's category: `category_id` wins over the legacy string.
+
+    `allow_archived_id` keeps an already-assigned archived category valid when
+    a bill is edited without changing it.
+    """
+    try:
+        if category_id is not None:
+            return get_category_for_user(
+                db,
+                me.id,
+                category_id,
+                allow_archived=category_id == allow_archived_id,
+            )
+        if legacy_key is not None:
+            return resolve_legacy_key(db, me.id, legacy_key)
+    except CategoryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="category_id or category is required",
+    )
 
 
 def _get_scoped_instance(db: Session, instance_id: int, me: User) -> PaymentInstance:
@@ -84,7 +120,11 @@ def list_bills(
     db: Session = Depends(get_db),
     me: User = Depends(current_user),
 ):
-    q = db.query(BillTemplate).filter(BillTemplate.user_id == me.id)
+    q = (
+        db.query(BillTemplate)
+        .options(selectinload(BillTemplate.category))
+        .filter(BillTemplate.user_id == me.id)
+    )
     if not include_archived:
         q = q.filter(BillTemplate.is_archived.is_(False))
     return q.order_by(BillTemplate.name).all()
@@ -121,9 +161,11 @@ def create_bill(
     else:
         start_period = now.strftime("%Y-%m")
 
+    category = _resolve_category(db, me, body.category_id, body.category)
+
     bill = BillTemplate(
         name=body.name,
-        category=body.category,
+        category_id=category.id,
         frequency=frequency,
         interval_count=interval_count,
         start_date=start_date,
@@ -168,7 +210,7 @@ def list_payments(
     instances = (
         db.query(PaymentInstance)
         .options(
-            selectinload(PaymentInstance.template),
+            selectinload(PaymentInstance.template).selectinload(BillTemplate.category),
             selectinload(PaymentInstance.payments),
         )
         .join(BillTemplate, PaymentInstance.bill_id == BillTemplate.id)
@@ -422,6 +464,8 @@ def update_bill(
     updates = body.model_dump(exclude_unset=True)
     updates.pop("recreate_deleted_future", None)
     due_month = updates.pop("due_month", None)
+    category_id = updates.pop("category_id", None)
+    legacy_key = updates.pop("category", None)
 
     old_frequency = bill.frequency
     effective_frequency = updates.get("frequency", old_frequency)
@@ -450,6 +494,11 @@ def update_bill(
         updates["due_day"] = None  # due_day is ignored for weekly bills
     else:
         updates["start_date"] = None  # start_date is ignored for non-weekly bills
+
+    if category_id is not None or legacy_key is not None:
+        bill.category_id = _resolve_category(
+            db, me, category_id, legacy_key, allow_archived_id=bill.category_id
+        ).id
 
     due_day_changed = "due_day" in updates and updates["due_day"] != bill.due_day
     for field, value in updates.items():

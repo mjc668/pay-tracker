@@ -12,15 +12,16 @@ def _today_utc() -> date:
 
 
 import app.models.bill  # noqa: F401 — register models
+import app.models.category  # noqa: F401
 import app.models.user  # noqa: F401
 from app.core.config import settings
 from app.models.bill import (
-    BillCategory,
     BillFrequency,
     BillTemplate,
     PaymentInstance,
     PaymentStatus,
 )
+from app.models.category import Category
 from app.models.user import User
 from app.services.reminder_job import (
     send_catchup_reminders,
@@ -54,13 +55,26 @@ def _make_user(
     return user
 
 
+def _default_category(db, user_id: int) -> Category:
+    category = (
+        db.query(Category)
+        .filter(Category.user_id == user_id, Category.key == "utilities")
+        .first()
+    )
+    if category is None:
+        category = Category(user_id=user_id, key="utilities")
+        db.add(category)
+        db.flush()
+    return category
+
+
 def _make_bill(db, user_id: int) -> BillTemplate:
     bill = BillTemplate(
         name="Internet",
         frequency=BillFrequency.monthly,
         amount=Decimal("99.99"),
         currency="PLN",
-        category=BillCategory.utilities,
+        category_id=_default_category(db, user_id).id,
         user_id=user_id,
     )
     db.add(bill)
@@ -230,7 +244,7 @@ def test_weekly_instances_fire_per_due_date(
         start_date=today,
         amount=Decimal("10.00"),
         currency="PLN",
-        category=BillCategory.utilities,
+        category_id=_default_category(db_session, user.id).id,
         user_id=user.id,
     )
     db_session.add(bill)
@@ -357,7 +371,7 @@ def _make_bill_named(db, user_id: int, name: str) -> BillTemplate:
         frequency=BillFrequency.monthly,
         amount=Decimal("99.99"),
         currency="PLN",
-        category=BillCategory.utilities,
+        category_id=_default_category(db, user_id).id,
         user_id=user_id,
     )
     db.add(bill)

@@ -168,6 +168,7 @@
         "startDateRequired": "First payment date is required.",
         "categoryLabel": "Category",
         "categoryRequired": "Category is required.",
+        "categoryAdd": "Add new…",
         "notesLabel": "Notes",
         "notesPlaceholder": "Optional notes",
         "pauseRecurrence": "Pause recurrence (no new instances created)",
@@ -216,7 +217,12 @@
         "heading": "Day of month",
         "shortMonthWarning": "Some months have fewer days — the bill will fall on the last available day."
     },
-    "CategoryCombobox": {"placeholder": "e.g. Utilities"},
+    "CategoryCombobox": {
+        "placeholder": "e.g. Utilities",
+        "addConfirm": "Add",
+        "addCancel": "Cancel",
+        "addFailed": "Could not create the category."
+    },
     "PaymentsPage": {
         "title": "Payments",
         "subtitle": "Track and mark your bills month by month.",
@@ -412,6 +418,25 @@
             "toggle": "Enable browser notifications",
             "osHint": "Not seeing notifications? Check your OS notification settings (macOS: System Settings → Notifications).",
             "blockedWarning": "Browser notifications are blocked. Enable them in your browser or operating system settings."
+        },
+        "categories": {
+            "title": "Categories",
+            "description": "Add, rename, archive, or delete the categories used to group your bills.",
+            "addLabel": "New category",
+            "addPlaceholder": "e.g. Pets",
+            "add": "Add",
+            "adding": "Adding…",
+            "rename": "Rename",
+            "save": "Save",
+            "cancel": "Cancel",
+            "archive": "Archive",
+            "unarchive": "Unarchive",
+            "delete": "Delete",
+            "deleteConfirm": "Delete “{name}”?",
+            "deleteBlocked": "This category is used by existing bills and cannot be deleted. Archive it instead.",
+            "archived": "Archived",
+            "error": "Something went wrong. Please try again.",
+            "loadError": "Failed to load categories."
         },
         "backup": {
             "title": "Backup Data",

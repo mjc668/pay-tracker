@@ -7,12 +7,14 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from app.models.bill import BillCategory, BillFrequency, PaymentStatus
+from app.models.bill import BillFrequency, PaymentStatus
+from app.schemas.category import CategoryOut
 
 
 class BillTemplateCreate(BaseModel):
     name: str
-    category: BillCategory
+    category_id: int | None = None  # preferred
+    category: str | None = None  # legacy default-key string, resolved server-side
     frequency: BillFrequency
     interval_count: int = Field(1, ge=1)
     start_date: date | None = None  # weekly anchor ("first payment date")
@@ -23,10 +25,17 @@ class BillTemplateCreate(BaseModel):
     notes: str | None = None
     is_paused: bool = False
 
+    @model_validator(mode="after")
+    def require_a_category(self) -> "BillTemplateCreate":
+        if self.category_id is None and self.category is None:
+            raise ValueError("category_id or category is required")
+        return self
+
 
 class BillTemplateUpdate(BaseModel):
     name: str | None = None
-    category: BillCategory | None = None
+    category_id: int | None = None  # preferred
+    category: str | None = None  # legacy default-key string, resolved server-side
     frequency: BillFrequency | None = None
     interval_count: int | None = Field(None, ge=1)
     start_date: date | None = None
@@ -44,7 +53,7 @@ class BillTemplateOut(BaseModel):
 
     id: int
     name: str
-    category: BillCategory
+    category: CategoryOut
     frequency: BillFrequency
     interval_count: int = 1
     start_date: date | None = None
@@ -93,7 +102,7 @@ class PaymentInstanceOut(BaseModel):
     frequency: BillFrequency
     interval_count: int = 1
     start_date: date | None = None
-    category: BillCategory
+    category: CategoryOut
     email_sent_at: datetime | None
     payments: list[PaymentOut] = []
 

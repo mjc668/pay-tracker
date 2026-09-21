@@ -19,8 +19,8 @@ import {
   syncInstances,
   type PaymentInstanceOut,
 } from "@/lib/payments-api";
-import type { BillCategory } from "@/lib/bills-api";
-import { CATEGORY_ORDER } from "@/lib/categories";
+import { categoryLabel, type Category } from "@/lib/categories-api";
+import { categoryValue, sortCategories } from "@/lib/categories";
 import { downloadXlsx } from "@/lib/export-api";
 import { SessionExpiredError } from "@/lib/api";
 import PaymentRow from "@/components/payments/PaymentRow";
@@ -56,6 +56,12 @@ function getTodayStr(): string {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function uniqueCategories(categories: Category[]): Category[] {
+  const byId = new Map<number, Category>();
+  for (const category of categories) byId.set(category.id, category);
+  return [...byId.values()];
 }
 
 function CategorySummary({
@@ -114,7 +120,7 @@ export default function PaymentsPage() {
 function PaymentsPageInner() {
   const t = useTranslations("PaymentsPage");
   const tRow = useTranslations("PaymentRow");
-  const tCategories = useTranslations("Categories");
+  const tRoot = useTranslations();
   const locale = useLocale();
 
   const today = new Date();
@@ -130,7 +136,7 @@ function PaymentsPageInner() {
   const [xlsxError, setXlsxError] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "calendar">("list");
   const [statusFilter, setStatusFilter] = useState<PaymentStatusFilter>("all");
-  const [categoryFilter, setCategoryFilter] = useState<BillCategory | "all">("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [searchFilter, setSearchFilter] = useState("");
 
   // Derived: true whenever selectedMonth hasn't finished loading yet.
@@ -199,12 +205,17 @@ function PaymentsPageInner() {
 
   const todayStr = getTodayStr();
 
-  const activeCategories = CATEGORY_ORDER.filter((cat) =>
-    instances.some((inst) => inst.category === cat),
+  const activeCategories = sortCategories(
+    uniqueCategories(instances.map((inst) => inst.category)),
+    locale,
+    tRoot,
   );
 
   const { collapsed, toggle, collapseAll, expandAll, allCollapsed } =
-    useCollapsedCategories("payments-collapsed-categories", activeCategories);
+    useCollapsedCategories(
+      "payments-collapsed-categories",
+      activeCategories.map((category) => String(category.id)),
+    );
 
   const searchQuery = searchFilter.trim().toLowerCase();
   const hasActiveFilters =
@@ -214,7 +225,7 @@ function PaymentsPageInner() {
     if (statusFilter === "unpaid" && inst.status === "paid") return false;
     if (statusFilter === "overdue" && inst.status !== "overdue") return false;
     if (statusFilter === "paid" && inst.status !== "paid") return false;
-    if (categoryFilter !== "all" && inst.category !== categoryFilter) return false;
+    if (categoryFilter !== "all" && categoryValue(inst.category) !== categoryFilter) return false;
     if (searchQuery && !inst.bill_name.toLowerCase().includes(searchQuery)) return false;
     return true;
   });
@@ -503,57 +514,60 @@ function PaymentsPageInner() {
       {/* Payment list */}
       {!loading && !loadError && view === "list" && filteredInstances.length > 0 && (
         <div className="flex flex-col gap-4">
-          {CATEGORY_ORDER.filter((cat) => filteredInstances.some((inst) => inst.category === cat)).map((cat) => {
-            const group = filteredInstances.filter((inst) => inst.category === cat);
-            return (
-              <div key={cat}>
-                <button
-                  onClick={() => toggle(cat)}
-                  className="mb-3 flex w-full items-center gap-2.5 text-left"
-                >
-                  <ChevronRight
-                    size={12}
-                    className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-150 ${
-                      collapsed.has(cat) ? "" : "rotate-90"
-                    }`}
-                  />
-                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 shrink-0">
-                    {tCategories(cat)}
-                  </span>
-                  <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
-                    {group.length}
-                  </span>
-                  {collapsed.has(cat) && (
-                    <CategorySummary
-                      group={group}
-                      todayStr={todayStr}
-                      labels={{
-                        upcoming: t("summaryUpcoming"),
-                        overdueToday: t("summaryOverdueToday"),
-                        overdue: t("summaryOverdue"),
-                        paid: t("summaryPaid"),
-                      }}
+          {activeCategories
+            .filter((cat) => filteredInstances.some((inst) => inst.category.id === cat.id))
+            .map((cat) => {
+              const groupKey = String(cat.id);
+              const group = filteredInstances.filter((inst) => inst.category.id === cat.id);
+              return (
+                <div key={cat.id}>
+                  <button
+                    onClick={() => toggle(groupKey)}
+                    className="mb-3 flex w-full items-center gap-2.5 text-left"
+                  >
+                    <ChevronRight
+                      size={12}
+                      className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-150 ${
+                        collapsed.has(groupKey) ? "" : "rotate-90"
+                      }`}
                     />
-                  )}
-                  <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700/60" />
-                </button>
-                {!collapsed.has(cat) && (
-                  <div className="flex flex-col gap-2">
-                    {group.map((inst) => (
-                      <PaymentRow
-                        key={inst.id}
-                        instance={inst}
-                        readOnly={false}
-                        onMarkPaid={setDialogTarget}
-                        onDelete={setDeleteTarget}
-                        onReverted={handleInstanceReverted}
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 shrink-0">
+                      {categoryLabel(cat, tRoot)}
+                    </span>
+                    <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
+                      {group.length}
+                    </span>
+                    {collapsed.has(groupKey) && (
+                      <CategorySummary
+                        group={group}
+                        todayStr={todayStr}
+                        labels={{
+                          upcoming: t("summaryUpcoming"),
+                          overdueToday: t("summaryOverdueToday"),
+                          overdue: t("summaryOverdue"),
+                          paid: t("summaryPaid"),
+                        }}
                       />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                    )}
+                    <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700/60" />
+                  </button>
+                  {!collapsed.has(groupKey) && (
+                    <div className="flex flex-col gap-2">
+                      {group.map((inst) => (
+                        <PaymentRow
+                          key={inst.id}
+                          instance={inst}
+                          readOnly={false}
+                          onMarkPaid={setDialogTarget}
+                          onDelete={setDeleteTarget}
+                          onReverted={handleInstanceReverted}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
         </div>
       )}
 

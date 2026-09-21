@@ -1,5 +1,6 @@
 import { apiFetch } from "./api";
-import type { BillCategory, BillFrequency } from "./bills-api";
+import type { BillFrequency } from "./bills-api";
+import type { Category } from "./categories-api";
 
 export type { BillFrequency };
 export type PaymentStatus = "upcoming" | "overdue" | "paid";
@@ -28,7 +29,7 @@ export interface PaymentInstanceOut {
   frequency: BillFrequency;
   interval_count: number;
   start_date: string | null;
-  category: BillCategory;
+  category: Category;
   email_sent_at: string | null;
   payments: PaymentEvent[];
 }

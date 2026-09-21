@@ -4,9 +4,9 @@ import { FormEvent, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import CategoryCombobox from "./CategoryCombobox";
 import MonthDayCalendar from "./MonthDayCalendar";
+import type { Category } from "@/lib/categories-api";
 import {
   normalizeBillFrequency,
-  type BillCategory,
   type BillFrequency,
   type BillTemplateCreate,
 } from "@/lib/bills-api";
@@ -49,6 +49,11 @@ type CurrencyOption = (typeof PRESET_CURRENCIES)[number] | "custom";
 
 interface Props {
   initial?: Partial<BillTemplateCreate>;
+  /** Category of the edited bill — may be archived and absent from `categories`. */
+  initialCategory?: Category;
+  /** Non-archived categories offered by the picker. */
+  categories: Category[];
+  onCategoryCreated: (category: Category) => void;
   /** Currency preselected for new bills when the profile defines one. */
   defaultCurrency?: string;
   onSave: (data: BillTemplateCreate) => Promise<void>;
@@ -67,11 +72,23 @@ const inputClass =
 
 const labelClass = "block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1.5";
 
-export default function BillTemplateForm({ initial, defaultCurrency, onSave, onCancel }: Props) {
+export default function BillTemplateForm({
+  initial,
+  initialCategory,
+  categories,
+  onCategoryCreated,
+  defaultCurrency,
+  onSave,
+  onCancel,
+}: Props) {
   const t = useTranslations("BillTemplateForm");
   const locale = useLocale();
   const [name, setName] = useState(initial?.name ?? "");
-  const [category, setCategory] = useState<BillCategory | "">(initial?.category ?? "");
+  const [category, setCategory] = useState<Category | null>(
+    initialCategory ??
+      categories.find((c) => c.id === initial?.category_id) ??
+      null,
+  );
   const [frequency, setFrequency] = useState<BillFrequency>(
     normalizeBillFrequency(initial?.frequency),
   );
@@ -107,7 +124,7 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
   function validate(fields: {
     name: string;
     amount: string;
-    category: BillCategory | "";
+    category: Category | null;
     frequency: BillFrequency;
     startDate: string;
   }): Errors {
@@ -125,7 +142,7 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
     overrides: Partial<{
       name: string;
       amount: string;
-      category: BillCategory | "";
+      category: Category | null;
       frequency: BillFrequency;
       startDate: string;
     }>,
@@ -137,7 +154,7 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
 
   function handleNameChange(v: string) { setName(v); revalidate({ name: v }); }
   function handleAmountChange(v: string) { setAmount(v); revalidate({ amount: v }); }
-  function handleCategoryChange(v: BillCategory | "") { setCategory(v); revalidate({ category: v }); }
+  function handleCategoryChange(v: Category | null) { setCategory(v); revalidate({ category: v }); }
   function handleFrequencyChange(v: BillFrequency) {
     setFrequency(v);
     setIntervalCount((count) => clampInterval(v, count));
@@ -156,7 +173,7 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
     setSubmitAttempted(true);
     const errs = validate({ name, amount, category, frequency, startDate });
     setErrors(errs);
-    if (Object.keys(errs).length > 0) return;
+    if (Object.keys(errs).length > 0 || category === null) return;
 
     setSaving(true);
     setApiError(null);
@@ -166,7 +183,7 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
       const isWeekly = frequency === "weekly";
       const payload: BillTemplateCreate = {
         name: name.trim(),
-        category: category as BillCategory,
+        category_id: category.id,
         frequency,
         interval_count: frequency === "one_off" ? 1 : intervalCount,
         start_date: isWeekly ? startDate : null,
@@ -331,7 +348,9 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
           <CategoryCombobox
             id="bill-category"
             value={category}
+            categories={categories}
             onChange={handleCategoryChange}
+            onCreated={onCategoryCreated}
           />
           {errors.category && <p className="mt-1 text-xs text-red-500">{errors.category}</p>}
         </div>

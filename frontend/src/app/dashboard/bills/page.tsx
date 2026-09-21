@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CalendarPlus, ChevronRight, ChevronsUpDown, Plus, Search, X } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   fetchBills,
   createBill,
@@ -13,9 +13,10 @@ import {
   type BillTemplateCreate,
   type BillTemplateUpdate,
 } from "@/lib/bills-api";
+import { fetchCategories, categoryLabel, type Category } from "@/lib/categories-api";
+import { categoryColor, categoryValue, sortCategories } from "@/lib/categories";
 import { fetchMe, type UserProfile } from "@/lib/user-api";
 import { SessionExpiredError } from "@/lib/api";
-import { CATEGORY_ORDER } from "@/lib/categories";
 import BillTemplateForm from "@/components/bills/BillTemplateForm";
 import BillTemplateRow from "@/components/bills/BillTemplateRow";
 import ArchiveConfirmDialog from "@/components/bills/ArchiveConfirmDialog";
@@ -25,6 +26,12 @@ import { useCollapsedCategories } from "@/hooks/useCollapsedCategories";
 
 type BillStateFilter = "all" | "active" | "paused";
 
+function uniqueCategories(categories: Category[]): Category[] {
+  const byId = new Map<number, Category>();
+  for (const category of categories) byId.set(category.id, category);
+  return [...byId.values()];
+}
+
 const filterLabelClass =
   "mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
 const filterSelectClass =
@@ -32,8 +39,10 @@ const filterSelectClass =
 
 export default function BillsPage() {
   const t = useTranslations("BillsPage");
-  const tCategories = useTranslations("Categories");
+  const tRoot = useTranslations();
+  const locale = useLocale();
   const [templates, setTemplates] = useState<BillTemplateOut[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -45,23 +54,32 @@ export default function BillsPage() {
   const [restoring, setRestoring] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<(typeof CATEGORY_ORDER)[number] | "all">("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [stateFilter, setStateFilter] = useState<BillStateFilter>("all");
   const [searchFilter, setSearchFilter] = useState("");
 
-  const activeCategories = CATEGORY_ORDER.filter((cat) =>
-    templates.some((tmpl) => tmpl.category === cat),
+  const sortedCategories = sortCategories(categories, locale, tRoot);
+  const activeCategories = sortCategories(
+    uniqueCategories(templates.map((tmpl) => tmpl.category)),
+    locale,
+    tRoot,
   );
+  const pickerCategories = sortedCategories.filter((category) => !category.is_archived);
+  const colorIndexById = new Map(sortedCategories.map((category, index) => [category.id, index]));
 
   const { collapsed, toggle, collapseAll, expandAll, allCollapsed } =
-    useCollapsedCategories("bills-collapsed-categories", activeCategories);
+    useCollapsedCategories(
+      "bills-collapsed-categories",
+      activeCategories.map((category) => String(category.id)),
+    );
 
   useEffect(() => {
     let cancelled = false;
-    fetchBills()
-      .then((data) => {
+    Promise.all([fetchBills(), fetchCategories(true)])
+      .then(([billData, categoryData]) => {
         if (!cancelled) {
-          setTemplates(data);
+          setTemplates(billData);
+          setCategories(categoryData);
           setLoadError(null);
           setLoading(false);
         }
@@ -97,7 +115,7 @@ export default function BillsPage() {
     categoryFilter !== "all" || stateFilter !== "all" || searchQuery !== "";
 
   const filteredTemplates = templates.filter((tmpl) => {
-    if (categoryFilter !== "all" && tmpl.category !== categoryFilter) return false;
+    if (categoryFilter !== "all" && categoryValue(tmpl.category) !== categoryFilter) return false;
     if (stateFilter === "active" && tmpl.is_paused) return false;
     if (stateFilter === "paused" && !tmpl.is_paused) return false;
     if (searchQuery && !tmpl.name.toLowerCase().includes(searchQuery)) return false;
@@ -108,6 +126,12 @@ export default function BillsPage() {
     setCategoryFilter("all");
     setStateFilter("all");
     setSearchFilter("");
+  }
+
+  function handleCategoryCreated(category: Category) {
+    setCategories((prev) =>
+      prev.some((existing) => existing.id === category.id) ? prev : [...prev, category],
+    );
   }
 
   async function handleCreate(data: BillTemplateCreate) {
@@ -272,17 +296,13 @@ export default function BillsPage() {
               <select
                 id="bill-filter-category"
                 value={categoryFilter}
-                onChange={(e) =>
-                  setCategoryFilter(
-                    e.target.value as (typeof CATEGORY_ORDER)[number] | "all",
-                  )
-                }
+                onChange={(e) => setCategoryFilter(e.target.value)}
                 className={filterSelectClass}
               >
                 <option value="all">{t("filterAllCategories")}</option>
                 {activeCategories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {tCategories(cat)}
+                  <option key={cat.id} value={categoryValue(cat)}>
+                    {categoryLabel(cat, tRoot)}
                   </option>
                 ))}
               </select>
@@ -351,6 +371,8 @@ export default function BillsPage() {
           <div className="p-5">
             <BillTemplateForm
               defaultCurrency={profile?.default_currency ?? undefined}
+              categories={pickerCategories}
+              onCategoryCreated={handleCategoryCreated}
               onSave={handleCreate}
               onCancel={() => setExpandedId(null)}
             />
@@ -394,47 +416,53 @@ export default function BillsPage() {
         </div>
       ) : filteredTemplates.length > 0 ? (
         <div className="flex flex-col gap-6">
-          {CATEGORY_ORDER.filter((cat) => filteredTemplates.some((tmpl) => tmpl.category === cat)).map((cat) => {
-            const group = filteredTemplates
-              .filter((tmpl) => tmpl.category === cat)
-              .sort((a, b) => a.name.localeCompare(b.name));
-            return (
-              <div key={cat}>
-                <button
-                  onClick={() => toggle(cat)}
-                  className="mb-3 flex w-full items-center gap-2.5 text-left"
-                >
-                  <ChevronRight
-                    size={12}
-                    className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-150 ${
-                      collapsed.has(cat) ? "" : "rotate-90"
-                    }`}
-                  />
-                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 shrink-0">
-                    {tCategories(cat)}
-                  </span>
-                  <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
-                    {group.length}
-                  </span>
-                  <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700/60" />
-                </button>
-                {!collapsed.has(cat) && (
-                  <div className="flex flex-col gap-2">
-                    {group.map((tmpl) => (
-                      <BillTemplateRow
-                        key={tmpl.id}
-                        template={tmpl}
-                        isExpanded={expandedId === tmpl.id}
-                        onEditToggle={() => toggleExpand(tmpl.id)}
-                        onSave={(data) => handleUpdate(tmpl.id, data)}
-                        onArchive={() => setArchiveTarget(tmpl)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {activeCategories
+            .filter((cat) => filteredTemplates.some((tmpl) => tmpl.category.id === cat.id))
+            .map((cat) => {
+              const groupKey = String(cat.id);
+              const group = filteredTemplates
+                .filter((tmpl) => tmpl.category.id === cat.id)
+                .sort((a, b) => a.name.localeCompare(b.name));
+              return (
+                <div key={cat.id}>
+                  <button
+                    onClick={() => toggle(groupKey)}
+                    className="mb-3 flex w-full items-center gap-2.5 text-left"
+                  >
+                    <ChevronRight
+                      size={12}
+                      className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-150 ${
+                        collapsed.has(groupKey) ? "" : "rotate-90"
+                      }`}
+                    />
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 shrink-0">
+                      {categoryLabel(cat, tRoot)}
+                    </span>
+                    <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
+                      {group.length}
+                    </span>
+                    <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700/60" />
+                  </button>
+                  {!collapsed.has(groupKey) && (
+                    <div className="flex flex-col gap-2">
+                      {group.map((tmpl) => (
+                        <BillTemplateRow
+                          key={tmpl.id}
+                          template={tmpl}
+                          isExpanded={expandedId === tmpl.id}
+                          categories={pickerCategories}
+                          onCategoryCreated={handleCategoryCreated}
+                          colorClass={categoryColor(colorIndexById.get(cat.id) ?? 0)}
+                          onEditToggle={() => toggleExpand(tmpl.id)}
+                          onSave={(data) => handleUpdate(tmpl.id, data)}
+                          onArchive={() => setArchiveTarget(tmpl)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
         </div>
       ) : null}
     </div>

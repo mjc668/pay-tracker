@@ -1,5 +1,5 @@
 import { apiFetch } from "./api";
-import { CATEGORY_ORDER } from "./categories";
+import type { Category } from "./categories-api";
 
 export type BillFrequency = "weekly" | "monthly" | "annual" | "one_off";
 
@@ -17,12 +17,10 @@ export function normalizeBillFrequency(value: string | null | undefined): BillFr
     : "monthly";
 }
 
-export type BillCategory = (typeof CATEGORY_ORDER)[number];
-
 export interface BillTemplateOut {
   id: number;
   name: string;
-  category: BillCategory;
+  category: Category;
   frequency: BillFrequency;
   interval_count: number;
   start_date: string | null;
@@ -39,7 +37,7 @@ export interface BillTemplateOut {
 
 export interface BillTemplateCreate {
   name: string;
-  category: BillCategory;
+  category_id: number;
   frequency: BillFrequency;
   interval_count?: number;
   start_date?: string | null;

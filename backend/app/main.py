@@ -10,7 +10,7 @@ logging.getLogger("app").setLevel(logging.INFO)
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.routers import auth, bills, export, stats
+from app.routers import auth, bills, categories, export, stats
 from app.services.reminder_job import send_catchup_reminders, send_daily_reminders
 from app.services.snapshot_cleanup import cleanup_old_snapshots
 
@@ -57,6 +57,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(bills.router)
+app.include_router(categories.router)
 app.include_router(export.router)
 app.include_router(stats.router)
 

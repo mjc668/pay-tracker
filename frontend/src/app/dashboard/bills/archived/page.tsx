@@ -2,32 +2,43 @@
 
 import { useEffect, useState } from "react";
 import { Archive, ChevronRight, ChevronsUpDown } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { fetchBills, normalizeBillFrequency, type BillTemplateOut } from "@/lib/bills-api";
-import { CATEGORY_ORDER } from "@/lib/categories";
+import { fetchCategories, categoryLabel, type Category } from "@/lib/categories-api";
+import { sortCategories } from "@/lib/categories";
 import { SessionExpiredError } from "@/lib/api";
 import { useCollapsedCategories } from "@/hooks/useCollapsedCategories";
 
 export default function ArchivedBillsPage() {
   const t = useTranslations("ArchivedBillsPage");
-  const tCategories = useTranslations("Categories");
+  const tRoot = useTranslations();
+  const locale = useLocale();
   const [templates, setTemplates] = useState<BillTemplateOut[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const activeCategories = CATEGORY_ORDER.filter((cat) =>
-    templates.some((tmpl) => tmpl.category === cat),
+  const activeCategories = sortCategories(
+    categories.filter((category) =>
+      templates.some((tmpl) => tmpl.category.id === category.id),
+    ),
+    locale,
+    tRoot,
   );
 
   const { collapsed, toggle, collapseAll, expandAll, allCollapsed } =
-    useCollapsedCategories("archived-bills-collapsed-categories", activeCategories);
+    useCollapsedCategories(
+      "archived-bills-collapsed-categories",
+      activeCategories.map((category) => String(category.id)),
+    );
 
   useEffect(() => {
     let cancelled = false;
-    fetchBills(true)
-      .then((data) => {
+    Promise.all([fetchBills(true), fetchCategories(true)])
+      .then(([billData, categoryData]) => {
         if (!cancelled) {
-          setTemplates(data.filter((t) => t.is_archived));
+          setTemplates(billData.filter((bill) => bill.is_archived));
+          setCategories(categoryData);
           setLoading(false);
         }
       })
@@ -96,31 +107,32 @@ export default function ArchivedBillsPage() {
 
       {!loading && templates.length > 0 && (
         <div className="flex flex-col gap-6">
-          {CATEGORY_ORDER.filter((cat) => templates.some((tmpl) => tmpl.category === cat)).map((cat) => {
+          {activeCategories.map((cat) => {
+            const groupKey = String(cat.id);
             const group = templates
-              .filter((tmpl) => tmpl.category === cat)
+              .filter((tmpl) => tmpl.category.id === cat.id)
               .sort((a, b) => a.name.localeCompare(b.name));
             return (
-              <div key={cat}>
+              <div key={cat.id}>
                 <button
-                  onClick={() => toggle(cat)}
+                  onClick={() => toggle(groupKey)}
                   className="mb-3 flex w-full items-center gap-2.5 text-left"
                 >
                   <ChevronRight
                     size={12}
                     className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-150 ${
-                      collapsed.has(cat) ? "" : "rotate-90"
+                      collapsed.has(groupKey) ? "" : "rotate-90"
                     }`}
                   />
                   <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 shrink-0">
-                    {tCategories(cat)}
+                    {categoryLabel(cat, tRoot)}
                   </span>
                   <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
                     {group.length}
                   </span>
                   <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700/60" />
                 </button>
-                {!collapsed.has(cat) && <div className="flex flex-col gap-2">
+                {!collapsed.has(groupKey) && <div className="flex flex-col gap-2">
                   {group.map((tmpl) => (
                     <div
                       key={tmpl.id}
