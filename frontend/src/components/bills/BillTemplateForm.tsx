@@ -4,13 +4,40 @@ import { FormEvent, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import CategoryCombobox from "./CategoryCombobox";
 import MonthDayCalendar from "./MonthDayCalendar";
-import type { BillCategory, BillFrequency, BillTemplateCreate } from "@/lib/bills-api";
+import {
+  normalizeBillFrequency,
+  type BillCategory,
+  type BillFrequency,
+  type BillTemplateCreate,
+} from "@/lib/bills-api";
 
 const PRESET_CURRENCIES = ["EUR", "PLN", "USD", "AUD"] as const;
 
-const FREQUENCY_VALUES: BillFrequency[] = ["monthly", "every_2_months", "quarterly", "annual", "one_off"];
+const FREQUENCY_VALUES: BillFrequency[] = ["weekly", "monthly", "annual", "one_off"];
 
-const RECURRING_FREQUENCIES: BillFrequency[] = ["monthly", "every_2_months", "quarterly"];
+const INTERVAL_MAX: Record<Exclude<BillFrequency, "one_off">, number> = {
+  weekly: 4,
+  monthly: 12,
+  annual: 5,
+};
+
+const LEGACY_INTERVALS: Record<string, number> = {
+  every_2_months: 2,
+  quarterly: 3,
+};
+
+function clampInterval(frequency: BillFrequency, value: number): number {
+  if (frequency === "one_off") return 1;
+  if (!Number.isFinite(value) || value < 1) return 1;
+  return Math.min(Math.trunc(value), INTERVAL_MAX[frequency]);
+}
+
+function todayIso(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
 
 const LOCALE_DEFAULT_CURRENCY: Record<string, string> = {
   pl: "PLN",
@@ -31,7 +58,7 @@ interface Props {
 interface Errors {
   name?: string;
   amount?: string;
-  due_day?: string;
+  start_date?: string;
   category?: string;
 }
 
@@ -46,8 +73,16 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
   const [name, setName] = useState(initial?.name ?? "");
   const [category, setCategory] = useState<BillCategory | "">(initial?.category ?? "");
   const [frequency, setFrequency] = useState<BillFrequency>(
-    initial?.frequency ?? "monthly",
+    normalizeBillFrequency(initial?.frequency),
   );
+  const [intervalCount, setIntervalCount] = useState<number>(() => {
+    const legacyInterval = LEGACY_INTERVALS[initial?.frequency ?? ""];
+    return clampInterval(
+      normalizeBillFrequency(initial?.frequency),
+      initial?.interval_count ?? legacyInterval ?? 1,
+    );
+  });
+  const [startDate, setStartDate] = useState(initial?.start_date ?? todayIso());
   const [amount, setAmount] = useState(initial?.amount ?? "");
   const initialCurrency =
     initial?.currency ?? defaultCurrency ?? LOCALE_DEFAULT_CURRENCY[locale] ?? "EUR";
@@ -69,36 +104,57 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
   const [saving, setSaving] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  const isRecurring = RECURRING_FREQUENCIES.includes(frequency);
-
   function validate(fields: {
     name: string;
     amount: string;
     category: BillCategory | "";
+    frequency: BillFrequency;
+    startDate: string;
   }): Errors {
     const e: Errors = {};
     if (!fields.name.trim()) e.name = t("nameRequired");
     if (fields.amount.trim() && isNaN(Number(fields.amount.trim().replace(",", "."))))
       e.amount = t("amountInvalid");
     if (!fields.category) e.category = t("categoryRequired");
+    if (fields.frequency === "weekly" && !fields.startDate)
+      e.start_date = t("startDateRequired");
     return e;
   }
 
-  function revalidate(overrides: Partial<{ name: string; amount: string; category: BillCategory | "" }>) {
+  function revalidate(
+    overrides: Partial<{
+      name: string;
+      amount: string;
+      category: BillCategory | "";
+      frequency: BillFrequency;
+      startDate: string;
+    }>,
+  ) {
     if (submitAttempted) {
-      setErrors(validate({ name, amount, category, ...overrides }));
+      setErrors(validate({ name, amount, category, frequency, startDate, ...overrides }));
     }
   }
 
   function handleNameChange(v: string) { setName(v); revalidate({ name: v }); }
   function handleAmountChange(v: string) { setAmount(v); revalidate({ amount: v }); }
   function handleCategoryChange(v: BillCategory | "") { setCategory(v); revalidate({ category: v }); }
-  function handleFrequencyChange(v: BillFrequency) { setFrequency(v); }
+  function handleFrequencyChange(v: BillFrequency) {
+    setFrequency(v);
+    setIntervalCount((count) => clampInterval(v, count));
+    revalidate({ frequency: v });
+  }
+  function handleIntervalChange(v: string) {
+    setIntervalCount(clampInterval(frequency, Number(v)));
+  }
+  function handleStartDateChange(v: string) {
+    setStartDate(v);
+    revalidate({ startDate: v });
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitAttempted(true);
-    const errs = validate({ name, amount, category });
+    const errs = validate({ name, amount, category, frequency, startDate });
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
@@ -107,14 +163,17 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
     try {
       const resolvedCurrency =
         currencyOption === "custom" ? customCurrency.trim().toUpperCase() : currencyOption;
+      const isWeekly = frequency === "weekly";
       const payload: BillTemplateCreate = {
         name: name.trim(),
         category: category as BillCategory,
         frequency,
+        interval_count: frequency === "one_off" ? 1 : intervalCount,
+        start_date: isWeekly ? startDate : null,
         amount: amount.trim() || "0",
         currency: resolvedCurrency || "EUR",
-        due_day: dueDay ? parseInt(dueDay, 10) : null,
-        due_month: dueMonth ? parseInt(dueMonth, 10) : null,
+        due_day: isWeekly || !dueDay ? null : parseInt(dueDay, 10),
+        due_month: isWeekly || !dueMonth ? null : parseInt(dueMonth, 10),
         notes: notes.trim() || null,
         is_paused: isPaused,
       };
@@ -187,12 +246,12 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
         </div>
       </div>
 
-      {/* Row 2: Frequency pills */}
+      {/* Row 2: Frequency unit pills + interval dropdown */}
       <div>
         <label className={labelClass}>
           {t("frequencyLabel")} <span className="text-red-400">*</span>
         </label>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {FREQUENCY_VALUES.map((v) => (
             <button
               key={v}
@@ -207,19 +266,62 @@ export default function BillTemplateForm({ initial, defaultCurrency, onSave, onC
               {t(`frequency.${v}` as never)}
             </button>
           ))}
+          {frequency !== "one_off" && (
+            <>
+              <span className="ml-1 text-sm text-slate-500 dark:text-slate-400">
+                {t("everyLabel")}
+              </span>
+              <select
+                aria-label={t("intervalAriaLabel")}
+                value={intervalCount}
+                onChange={(e) => handleIntervalChange(e.target.value)}
+                className="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none transition-all focus:border-green-500 focus:ring-2 focus:ring-green-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-green-600 dark:focus:ring-green-900/40"
+              >
+                {Array.from({ length: INTERVAL_MAX[frequency] }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                {t(`intervalUnit.${frequency}`, { count: intervalCount })}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Row 3: Date picker (calendar for all frequencies) */}
+      {/* Row 3: Date picker — weekly uses a native date input, others the calendar */}
       <div>
-        <label className={labelClass}>
-          {isRecurring ? t("startDateLabel") : t("dueDateLabel")}
+        <label
+          className={labelClass}
+          htmlFor={frequency === "weekly" ? "bill-start-date" : undefined}
+        >
+          {frequency === "weekly"
+            ? t("firstPaymentDateLabel")
+            : frequency === "one_off"
+              ? t("dueDateLabel")
+              : t("startDateLabel")}
         </label>
-        <MonthDayCalendar
-          month={parseInt(dueMonth, 10) || new Date().getMonth() + 1}
-          day={parseInt(dueDay, 10) || new Date().getDate()}
-          onChange={(m, d) => { setDueMonth(String(m)); setDueDay(String(d)); }}
-        />
+        {frequency === "weekly" ? (
+          <>
+            <input
+              id="bill-start-date"
+              type="date"
+              value={startDate}
+              onChange={(e) => handleStartDateChange(e.target.value)}
+              required
+              className={inputClass}
+            />
+            {errors.start_date && (
+              <p className="mt-1 text-xs text-red-500">{errors.start_date}</p>
+            )}
+          </>
+        ) : (
+          <MonthDayCalendar
+            month={parseInt(dueMonth, 10) || new Date().getMonth() + 1}
+            day={parseInt(dueDay, 10) || new Date().getDate()}
+            onChange={(m, d) => { setDueMonth(String(m)); setDueDay(String(d)); }}
+          />
+        )}
       </div>
 
       {/* Row 4: Category + Notes */}

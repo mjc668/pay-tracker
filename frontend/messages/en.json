@@ -130,10 +130,9 @@
         "willAppearHere": "Bills you archive will appear here",
         "archived": "Archived",
         "frequency": {
-            "monthly": "Monthly",
-            "every_2_months": "Every 2 months",
-            "quarterly": "Quarterly",
-            "annual": "Annual",
+            "weekly": "Every {count, plural, one {week} other {# weeks}}",
+            "monthly": "Every {count, plural, one {month} other {# months}}",
+            "annual": "Every {count, plural, one {year} other {# years}}",
             "one_off": "One-off"
         },
         "collapseAll": "Collapse all",
@@ -151,14 +150,22 @@
         "customCurrencyPlaceholder": "e.g. CHF",
         "frequencyLabel": "Frequency",
         "frequency": {
+            "weekly": "Weekly",
             "monthly": "Monthly",
-            "every_2_months": "Every 2 months",
-            "quarterly": "Quarterly",
-            "annual": "Annual",
+            "annual": "Yearly",
             "one_off": "One-off"
+        },
+        "everyLabel": "Every",
+        "intervalAriaLabel": "Interval",
+        "intervalUnit": {
+            "weekly": "{count, plural, one {week} other {weeks}}",
+            "monthly": "{count, plural, one {month} other {months}}",
+            "annual": "{count, plural, one {year} other {years}}"
         },
         "dueDateLabel": "Due date",
         "startDateLabel": "Starting month & day",
+        "firstPaymentDateLabel": "First payment date",
+        "startDateRequired": "First payment date is required.",
         "categoryLabel": "Category",
         "categoryRequired": "Category is required.",
         "notesLabel": "Notes",
@@ -175,11 +182,11 @@
         "close": "Close",
         "edit": "Edit",
         "archive": "Archive",
+        "startsOn": "Starts {date}",
         "frequency": {
-            "monthly": "Monthly",
-            "every_2_months": "Every 2 months",
-            "quarterly": "Quarterly",
-            "annual": "Annual",
+            "weekly": "Every {count, plural, one {week} other {# weeks}}",
+            "monthly": "Every {count, plural, one {month} other {# months}}",
+            "annual": "Every {count, plural, one {year} other {# years}}",
             "one_off": "One-off"
         }
     },
@@ -198,10 +205,9 @@
         "archiving": "Archiving…"
     },
     "Frequencies": {
-        "monthly": "Monthly",
-        "every_2_months": "Every 2 months",
-        "quarterly": "Quarterly",
-        "annual": "Annual",
+        "weekly": "Every {count, plural, one {week} other {# weeks}}",
+        "monthly": "Every {count, plural, one {month} other {# months}}",
+        "annual": "Every {count, plural, one {year} other {# years}}",
         "one_off": "One-off"
     },
     "DayPicker": {

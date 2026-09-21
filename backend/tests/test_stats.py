@@ -330,7 +330,7 @@ def test_forecast_monthly_contributes_every_month_and_ignores_instances(client_d
     assert all(_dec(point["expected_total"]) == Decimal("100.00") for point in forecast)
 
 
-def test_forecast_quarterly_and_annual_only_on_active_periods(client_db):
+def test_forecast_intervals_and_annual_only_on_active_periods(client_db):
     client, db = client_db
     token = register_and_login(client, "stats_forecast_cycle@test.com")
     current = date.today().strftime("%Y-%m")
@@ -338,7 +338,7 @@ def test_forecast_quarterly_and_annual_only_on_active_periods(client_db):
     _create_bill(
         client,
         token,
-        {"name": "Quarterly", "frequency": "quarterly", "amount": "30.00"},
+        {"name": "Quarterly", "interval_count": 3, "amount": "30.00"},
     )
     annual_id = _create_bill(
         client, token, {"name": "Annual", "frequency": "annual", "amount": "120.00"}
@@ -357,14 +357,52 @@ def test_forecast_quarterly_and_annual_only_on_active_periods(client_db):
     expected = {
         1: Decimal("120.00"),  # annual boundary
         2: Decimal("0"),
-        3: Decimal("30.00"),  # quarterly (anchor +3)
+        3: Decimal("30.00"),  # interval-3 (anchor +3)
         4: Decimal("0"),
         5: Decimal("0"),
-        6: Decimal("30.00"),  # quarterly (anchor +6)
+        6: Decimal("30.00"),  # interval-3 (anchor +6)
     }
     for offset, value in expected.items():
         point = forecast[offset - 1]
         assert _dec(point["expected_total"]) == value, point
+
+
+def test_forecast_counts_weekly_occurrences_per_month(client_db):
+    """A weekly bill contributes amount × occurrences in each forecast month."""
+    client, db = client_db
+    token = register_and_login(client, "stats_forecast_weekly@test.com")
+    current = date.today().strftime("%Y-%m")
+    start = date(int(current[:4]), int(current[5:]), 1)
+
+    _create_bill(
+        client,
+        token,
+        {
+            "name": "Weekly",
+            "frequency": "weekly",
+            "start_date": start.isoformat(),
+            "amount": "10.00",
+            "due_day": None,
+        },
+    )
+
+    forecast = _overview(client, token)["forecast"]
+    assert [point["period"] for point in forecast] == [
+        _shift(current, offset) for offset in range(1, 7)
+    ]
+
+    for point in forecast:
+        year, month = map(int, point["period"].split("-"))
+        month_start = date(year, month, 1)
+        # Independent oracle: count 7-day steps that land in this month.
+        occurrences = 0
+        cursor = start
+        while cursor < month_start:
+            cursor += timedelta(days=7)
+        while cursor.strftime("%Y-%m") == point["period"]:
+            occurrences += 1
+            cursor += timedelta(days=7)
+        assert _dec(point["expected_total"]) == Decimal("10.00") * occurrences, point
 
 
 def test_forecast_excludes_paused_archived_and_one_off(client_db):

@@ -1,6 +1,6 @@
 """Tests for GET /bills/{id}/has-deleted-future and PATCH recreate_deleted_future."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -274,3 +274,125 @@ def test_patch_restore_cross_user_returns_403(client_db):
         headers=auth(tok_b),
     )
     assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# PATCH /bills/{id} — weekly schedule changes and interval validation
+# ---------------------------------------------------------------------------
+
+
+def test_patch_weekly_schedule_change_respaces_future_unpaid(client_db):
+    """Changing a weekly interval re-spaces future unpaid instances from the
+    first occurrence on/after today. Paid and soft-deleted rows are untouched."""
+    client, db = client_db
+    token = register_and_login(client, "weekly_patch@test.com")
+    today = date.today()
+    # Future anchor so create does not backfill the current month.
+    start = today + timedelta(days=30)
+    bill_id = _create_bill(
+        client,
+        token,
+        {
+            "frequency": "weekly",
+            "start_date": start.isoformat(),
+            "interval_count": 1,
+            "due_day": None,
+        },
+    )
+
+    first = _insert_instance(
+        db,
+        bill_id,
+        (today + timedelta(days=40)).strftime("%Y-%m"),
+        today + timedelta(days=40),
+    )
+    second = _insert_instance(
+        db,
+        bill_id,
+        (today + timedelta(days=50)).strftime("%Y-%m"),
+        today + timedelta(days=50),
+    )
+    third = _insert_instance(
+        db,
+        bill_id,
+        (today + timedelta(days=60)).strftime("%Y-%m"),
+        today + timedelta(days=60),
+    )
+    paid = _insert_instance(
+        db,
+        bill_id,
+        (today + timedelta(days=45)).strftime("%Y-%m"),
+        today + timedelta(days=45),
+        status=PaymentStatus.paid,
+    )
+    deleted = _insert_instance(
+        db,
+        bill_id,
+        (today + timedelta(days=55)).strftime("%Y-%m"),
+        today + timedelta(days=55),
+        is_deleted=True,
+    )
+
+    r = client.patch(
+        f"/bills/{bill_id}", json={"interval_count": 2}, headers=auth(token)
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["interval_count"] == 2
+
+    db.expire_all()
+    assert db.get(PaymentInstance, first.id).due_date == start
+    assert db.get(PaymentInstance, second.id).due_date == start + timedelta(days=14)
+    assert db.get(PaymentInstance, third.id).due_date == start + timedelta(days=28)
+    assert db.get(PaymentInstance, first.id).period == start.strftime("%Y-%m")
+    # Paid and soft-deleted rows keep their old dates.
+    assert db.get(PaymentInstance, paid.id).due_date == today + timedelta(days=45)
+    assert db.get(PaymentInstance, deleted.id).due_date == today + timedelta(days=55)
+
+
+def test_patch_weekly_to_monthly_clears_start_date_and_due_day(client_db):
+    client, db = client_db
+    token = register_and_login(client, "weekly_to_monthly@test.com")
+    start = date.today() + timedelta(days=10)
+    bill_id = _create_bill(
+        client,
+        token,
+        {
+            "frequency": "weekly",
+            "start_date": start.isoformat(),
+            "due_day": None,
+        },
+    )
+
+    r = client.patch(
+        f"/bills/{bill_id}",
+        json={"frequency": "monthly", "due_day": 10},
+        headers=auth(token),
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["frequency"] == "monthly"
+    assert data["start_date"] is None
+    assert data["due_day"] == 10
+    assert data["interval_count"] == 1
+
+
+def test_patch_monthly_to_weekly_requires_start_date(client_db):
+    client, db = client_db
+    token = register_and_login(client, "monthly_to_weekly@test.com")
+    bill_id = _create_bill(client, token)  # monthly, no start_date
+
+    r = client.patch(
+        f"/bills/{bill_id}", json={"frequency": "weekly"}, headers=auth(token)
+    )
+    assert r.status_code == 422
+
+
+def test_patch_interval_out_of_bounds_returns_422(client_db):
+    client, db = client_db
+    token = register_and_login(client, "patch_interval_bounds@test.com")
+    bill_id = _create_bill(client, token)  # monthly → max 12
+
+    r = client.patch(
+        f"/bills/{bill_id}", json={"interval_count": 13}, headers=auth(token)
+    )
+    assert r.status_code == 422

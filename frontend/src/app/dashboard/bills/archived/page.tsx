@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Archive, ChevronRight, ChevronsUpDown } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { fetchBills, type BillTemplateOut } from "@/lib/bills-api";
+import { fetchBills, normalizeBillFrequency, type BillTemplateOut } from "@/lib/bills-api";
 import { CATEGORY_ORDER } from "@/lib/categories";
 import { SessionExpiredError } from "@/lib/api";
 import { useCollapsedCategories } from "@/hooks/useCollapsedCategories";
@@ -135,7 +135,9 @@ export default function ArchivedBillsPage() {
                             {tmpl.amount} {tmpl.currency}
                           </span>
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400">
-                            {t(`frequency.${tmpl.frequency}` as never) ?? tmpl.frequency}
+                            {t(`frequency.${normalizeBillFrequency(tmpl.frequency)}`, {
+                              count: tmpl.interval_count ?? 1,
+                            })}
                           </span>
                         </div>
                       </div>

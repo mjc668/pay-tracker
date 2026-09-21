@@ -130,10 +130,9 @@
         "willAppearHere": "Archivierte Rechnungen erscheinen hier",
         "archived": "Archiviert",
         "frequency": {
-            "monthly": "Monatlich",
-            "every_2_months": "Alle 2 Monate",
-            "quarterly": "Vierteljährlich",
-            "annual": "Jährlich",
+            "weekly": "{count, plural, one {Jede Woche} other {Alle # Wochen}}",
+            "monthly": "{count, plural, one {Jeden Monat} other {Alle # Monate}}",
+            "annual": "{count, plural, one {Jedes Jahr} other {Alle # Jahre}}",
             "one_off": "Einmalig"
         },
         "collapseAll": "Alle einklappen",
@@ -151,14 +150,22 @@
         "customCurrencyPlaceholder": "z. B. CHF",
         "frequencyLabel": "Häufigkeit",
         "frequency": {
+            "weekly": "Wöchentlich",
             "monthly": "Monatlich",
-            "every_2_months": "Alle 2 Monate",
-            "quarterly": "Vierteljährlich",
             "annual": "Jährlich",
             "one_off": "Einmalig"
         },
+        "everyLabel": "Alle",
+        "intervalAriaLabel": "Intervall",
+        "intervalUnit": {
+            "weekly": "{count, plural, one {Woche} other {Wochen}}",
+            "monthly": "{count, plural, one {Monat} other {Monate}}",
+            "annual": "{count, plural, one {Jahr} other {Jahre}}"
+        },
         "dueDateLabel": "Fälligkeitsdatum",
         "startDateLabel": "Startmonat und -tag",
+        "firstPaymentDateLabel": "Datum der ersten Zahlung",
+        "startDateRequired": "Datum der ersten Zahlung ist erforderlich.",
         "categoryLabel": "Kategorie",
         "categoryRequired": "Kategorie ist erforderlich.",
         "notesLabel": "Notizen",
@@ -175,11 +182,11 @@
         "close": "Schließen",
         "edit": "Bearbeiten",
         "archive": "Archivieren",
+        "startsOn": "Beginnt am {date}",
         "frequency": {
-            "monthly": "Monatlich",
-            "every_2_months": "Alle 2 Monate",
-            "quarterly": "Vierteljährlich",
-            "annual": "Jährlich",
+            "weekly": "{count, plural, one {Jede Woche} other {Alle # Wochen}}",
+            "monthly": "{count, plural, one {Jeden Monat} other {Alle # Monate}}",
+            "annual": "{count, plural, one {Jedes Jahr} other {Alle # Jahre}}",
             "one_off": "Einmalig"
         }
     },
@@ -198,10 +205,9 @@
         "archiving": "Archivierung…"
     },
     "Frequencies": {
-        "monthly": "Monatlich",
-        "every_2_months": "Alle 2 Monate",
-        "quarterly": "Vierteljährlich",
-        "annual": "Jährlich",
+        "weekly": "{count, plural, one {Jede Woche} other {Alle # Wochen}}",
+        "monthly": "{count, plural, one {Jeden Monat} other {Alle # Monate}}",
+        "annual": "{count, plural, one {Jedes Jahr} other {Alle # Jahre}}",
         "one_off": "Einmalig"
     },
     "DayPicker": {

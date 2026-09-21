@@ -26,6 +26,8 @@ export interface PaymentInstanceOut {
   bill_name: string;
   currency: string;
   frequency: BillFrequency;
+  interval_count: number;
+  start_date: string | null;
   category: BillCategory;
   email_sent_at: string | null;
   payments: PaymentEvent[];

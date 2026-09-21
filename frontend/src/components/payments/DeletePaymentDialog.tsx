@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { deletePayment, type PaymentInstanceOut } from "@/lib/payments-api";
+import { normalizeBillFrequency } from "@/lib/bills-api";
 
 interface Props {
   instance: PaymentInstanceOut;
@@ -33,8 +34,11 @@ export default function DeletePaymentDialog({
 
   if (!isOpen) return null;
 
-  const isRecurring = instance.frequency !== "one_off";
-  const frequencyLabel = tFreq(instance.frequency as Parameters<typeof tFreq>[0]);
+  const frequency = normalizeBillFrequency(instance.frequency);
+  const isRecurring = frequency !== "one_off";
+  const frequencyLabel = tFreq(frequency, {
+    count: instance.interval_count ?? 1,
+  });
 
   async function handleConfirm() {
     setIsDeleting(true);

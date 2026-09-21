@@ -31,6 +31,8 @@ from app.services.recurrence import (
     ensure_current_period_instances,
     generate_future_instances,
     generate_next_instance,
+    recompute_weekly_instances,
+    validate_schedule,
 )
 
 router = APIRouter(prefix="/bills", tags=["bills"])
@@ -65,6 +67,8 @@ def _to_out(
             "bill_name": inst.template.name,
             "currency": inst.template.currency,
             "frequency": inst.template.frequency,
+            "interval_count": inst.template.interval_count,
+            "start_date": inst.template.start_date,
             "category": inst.template.category,
             "email_sent_at": inst.email_sent_at,
             # Match the relationship's order_by even if the in-memory
@@ -94,24 +98,52 @@ def create_bill(
 ):
     from app.models.bill import BillFrequency as BF
 
-    RECURRING = (BF.monthly, BF.every_2_months, BF.quarterly)
-
     now = datetime.now(timezone.utc)
-    if body.due_month and body.frequency in (BF.annual, BF.one_off):
+    frequency = body.frequency
+    interval_count = 1 if frequency == BF.one_off else body.interval_count
+    start_date = body.start_date if frequency == BF.weekly else None
+    due_day = None if frequency == BF.weekly else body.due_day
+
+    error = validate_schedule(frequency, interval_count, start_date)
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error
+        )
+
+    if frequency == BF.weekly:
+        assert start_date is not None  # guaranteed by validate_schedule
+        start_period = start_date.strftime("%Y-%m")
+    elif body.due_month and frequency in (BF.annual, BF.one_off):
         year = now.year if body.due_month >= now.month else now.year + 1
         start_period = f"{year:04d}-{body.due_month:02d}"
-    elif body.due_month and body.frequency in RECURRING:
+    elif body.due_month and frequency == BF.monthly:
         start_period = f"{now.year:04d}-{body.due_month:02d}"
     else:
         start_period = now.strftime("%Y-%m")
-    data = body.model_dump(exclude={"due_month"})
-    bill = BillTemplate(**data, user_id=me.id, start_period=start_period)
+
+    bill = BillTemplate(
+        name=body.name,
+        category=body.category,
+        frequency=frequency,
+        interval_count=interval_count,
+        start_date=start_date,
+        amount=body.amount,
+        currency=body.currency,
+        due_day=due_day,
+        notes=body.notes,
+        is_paused=body.is_paused,
+        user_id=me.id,
+        start_period=start_period,
+    )
     db.add(bill)
     db.commit()
     db.refresh(bill)
 
     current_period = now.strftime("%Y-%m")
-    if body.frequency in RECURRING and start_period < current_period:
+    if frequency == BF.weekly:
+        # Occurrences run from start_date through the end of the current month.
+        backfill_template_instances(db, bill, start_period, current_period)
+    elif frequency == BF.monthly and start_period < current_period:
         backfill_template_instances(db, bill, start_period, current_period)
 
     return bill
@@ -179,12 +211,12 @@ def add_payment(
         paid_on=body.paid_on or date.today(),
         note=body.note,
     )
-    period = instance.period
+    paid_due_date = instance.due_date
     db.commit()
 
-    # auto-create next period instance only on the transition to fully paid
+    # auto-create next instance only on the transition to fully paid
     if became_fully_paid and not template.is_paused:
-        generate_next_instance(db, template, period)
+        generate_next_instance(db, template, paid_due_date)
 
     db.refresh(instance)
     return _to_out(instance)
@@ -247,12 +279,12 @@ def mark_paid(
         paid_on=date.today(),
         note=body.notes,
     )
-    period = instance.period
+    paid_due_date = instance.due_date
     db.commit()
 
-    # auto-create next period instance only on the transition to fully paid
+    # auto-create next instance only on the transition to fully paid
     if became_fully_paid and not template.is_paused:
-        generate_next_instance(db, template, period)
+        generate_next_instance(db, template, paid_due_date)
 
     db.refresh(instance)
     return _to_out(instance)
@@ -390,18 +422,50 @@ def update_bill(
     updates = body.model_dump(exclude_unset=True)
     updates.pop("recreate_deleted_future", None)
     due_month = updates.pop("due_month", None)
+
+    old_frequency = bill.frequency
+    effective_frequency = updates.get("frequency", old_frequency)
+    effective_interval = updates.get("interval_count", bill.interval_count)
+    effective_start_date = updates.get("start_date", bill.start_date)
+    if effective_frequency == BF.one_off:
+        effective_interval = 1
+
+    error = validate_schedule(
+        effective_frequency, effective_interval, effective_start_date
+    )
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error
+        )
+
+    schedule_changed = (
+        effective_frequency != old_frequency
+        or effective_interval != bill.interval_count
+        or ("start_date" in updates and updates["start_date"] != bill.start_date)
+    )
+
+    updates["frequency"] = effective_frequency
+    updates["interval_count"] = effective_interval
+    if effective_frequency == BF.weekly:
+        updates["due_day"] = None  # due_day is ignored for weekly bills
+    else:
+        updates["start_date"] = None  # start_date is ignored for non-weekly bills
+
     due_day_changed = "due_day" in updates and updates["due_day"] != bill.due_day
     for field, value in updates.items():
         setattr(bill, field, value)
 
     # Recalculate start_period when due_month changes for annual/one_off
-    effective_frequency = updates.get("frequency", bill.frequency)
     if due_month is not None and effective_frequency in (BF.annual, BF.one_off):
         now = datetime.now(timezone.utc)
         year = now.year if due_month >= now.month else now.year + 1
         bill.start_period = f"{year:04d}-{due_month:02d}"
 
-    if due_day_changed:
+    if effective_frequency == BF.weekly:
+        if schedule_changed and bill.start_date is not None:
+            bill.start_period = bill.start_date.strftime("%Y-%m")
+            recompute_weekly_instances(db, bill, date.today())
+    elif due_day_changed:
         unpaid = (
             db.query(PaymentInstance)
             .filter(
@@ -428,7 +492,10 @@ def update_bill(
         for inst in tombstones:
             inst.is_deleted = False
             inst.amount = bill.amount
-            inst.due_date = _due_date_for_period(inst.period, bill.due_day)
+            if bill.frequency != BF.weekly:
+                # Weekly tombstones keep their occurrence date; period already
+                # matches it and a month can hold several occurrences.
+                inst.due_date = _due_date_for_period(inst.period, bill.due_day)
             inst.status = PaymentStatus.upcoming
 
     db.commit()

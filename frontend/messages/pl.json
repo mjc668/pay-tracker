@@ -130,10 +130,9 @@
         "willAppearHere": "Tutaj pojawią się zarchiwizowane rachunki",
         "archived": "Zarchiwizowany",
         "frequency": {
-            "monthly": "Miesięcznie",
-            "every_2_months": "Co 2 miesiące",
-            "quarterly": "Kwartalnie",
-            "annual": "Rocznie",
+            "weekly": "Co {count, plural, one {tydzień} few {tygodnie} many {tygodni} other {tygodnia}}",
+            "monthly": "Co {count, plural, one {miesiąc} few {miesiące} many {miesięcy} other {miesiąca}}",
+            "annual": "Co {count, plural, one {rok} few {lata} many {lat} other {lata}}",
             "one_off": "Jednorazowo"
         },
         "collapseAll": "Zwiń wszystko",
@@ -151,14 +150,22 @@
         "customCurrencyPlaceholder": "np. CHF",
         "frequencyLabel": "Częstotliwość",
         "frequency": {
+            "weekly": "Tygodniowo",
             "monthly": "Miesięcznie",
-            "every_2_months": "Co 2 miesiące",
-            "quarterly": "Kwartalnie",
             "annual": "Rocznie",
             "one_off": "Jednorazowo"
         },
+        "everyLabel": "Co",
+        "intervalAriaLabel": "Interwał",
+        "intervalUnit": {
+            "weekly": "{count, plural, one {tydzień} few {tygodnie} many {tygodni} other {tygodnia}}",
+            "monthly": "{count, plural, one {miesiąc} few {miesiące} many {miesięcy} other {miesiąca}}",
+            "annual": "{count, plural, one {rok} few {lata} many {lat} other {lata}}"
+        },
         "dueDateLabel": "Termin płatności",
         "startDateLabel": "Miesiąc i dzień rozpoczęcia",
+        "firstPaymentDateLabel": "Data pierwszej płatności",
+        "startDateRequired": "Data pierwszej płatności jest wymagana.",
         "categoryLabel": "Kategoria",
         "categoryRequired": "Kategoria jest wymagana.",
         "notesLabel": "Notatki",
@@ -175,11 +182,11 @@
         "close": "Zamknij",
         "edit": "Edytuj",
         "archive": "Archiwizuj",
+        "startsOn": "Od {date}",
         "frequency": {
-            "monthly": "Miesięcznie",
-            "every_2_months": "Co 2 miesiące",
-            "quarterly": "Kwartalnie",
-            "annual": "Rocznie",
+            "weekly": "Co {count, plural, one {tydzień} few {tygodnie} many {tygodni} other {tygodnia}}",
+            "monthly": "Co {count, plural, one {miesiąc} few {miesiące} many {miesięcy} other {miesiąca}}",
+            "annual": "Co {count, plural, one {rok} few {lata} many {lat} other {lata}}",
             "one_off": "Jednorazowo"
         }
     },
@@ -198,10 +205,9 @@
         "archiving": "Archiwizowanie…"
     },
     "Frequencies": {
-        "monthly": "Miesięcznie",
-        "every_2_months": "Co 2 miesiące",
-        "quarterly": "Kwartalnie",
-        "annual": "Rocznie",
+        "weekly": "Co {count, plural, one {tydzień} few {tygodnie} many {tygodni} other {tygodnia}}",
+        "monthly": "Co {count, plural, one {miesiąc} few {miesiące} many {miesięcy} other {miesiąca}}",
+        "annual": "Co {count, plural, one {rok} few {lata} many {lat} other {lata}}",
         "one_off": "Jednorazowo"
     },
     "DayPicker": {

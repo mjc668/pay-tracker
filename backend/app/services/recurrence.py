@@ -1,10 +1,39 @@
-from datetime import date, datetime, timezone
 from calendar import monthrange
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.bill import BillFrequency, BillTemplate, PaymentInstance, PaymentStatus
+
+# Allowed interval_count per unit: weekly 1-4, monthly 1-12, annual 1-5.
+_INTERVAL_MAX: dict[BillFrequency, int] = {
+    BillFrequency.weekly: 4,
+    BillFrequency.monthly: 12,
+    BillFrequency.annual: 5,
+    BillFrequency.one_off: 1,
+}
+
+
+def validate_schedule(
+    frequency: BillFrequency,
+    interval_count: int,
+    start_date: date | None,
+) -> str | None:
+    """Return an error message when the effective schedule is invalid, else None.
+
+    Callers must normalize `interval_count` to 1 for one_off bills before
+    validating. `start_date` is only meaningful for weekly bills.
+    """
+    frequency = BillFrequency(frequency)
+    if frequency == BillFrequency.one_off:
+        return None
+    maximum = _INTERVAL_MAX[frequency]
+    if not 1 <= interval_count <= maximum:
+        return f"interval_count for {frequency.value} bills must be between 1 and {maximum}"
+    if frequency == BillFrequency.weekly and start_date is None:
+        return "weekly bills require start_date"
+    return None
 
 
 def _add_months(period: str, delta: int) -> str:
@@ -14,26 +43,17 @@ def _add_months(period: str, delta: int) -> str:
     return f"{total // 12:04d}-{total % 12 + 1:02d}"
 
 
-def _next_period(period: str, frequency: BillFrequency) -> str:
-    year, month = map(int, period.split("-"))
+def _next_period(period: str, frequency: BillFrequency, interval: int) -> str:
+    """Shift a month-anchored period by one recurrence step.
+
+    Non month-anchored units (weekly/one_off) are handled by their callers;
+    this returns the period unchanged for them.
+    """
     if frequency == BillFrequency.monthly:
-        month += 1
-        if month > 12:
-            month = 1
-            year += 1
-    elif frequency == BillFrequency.every_2_months:
-        month += 2
-        while month > 12:
-            month -= 12
-            year += 1
-    elif frequency == BillFrequency.quarterly:
-        month += 3
-        while month > 12:
-            month -= 12
-            year += 1
-    elif frequency == BillFrequency.annual:
-        year += 1
-    return f"{year:04d}-{month:02d}"
+        return _add_months(period, interval)
+    if frequency == BillFrequency.annual:
+        return _add_months(period, 12 * interval)
+    return period
 
 
 def _due_date_for_period(period: str, due_day: int | None) -> date:
@@ -44,10 +64,26 @@ def _due_date_for_period(period: str, due_day: int | None) -> date:
     return date(year, month, min(day, last_day))
 
 
+def _step_weeks(start: date, interval: int, k: int) -> date:
+    """The k-th weekly occurrence after `start`: start + 7*interval*k days."""
+    return start + timedelta(days=7 * interval * k)
+
+
+def _step_months(template: BillTemplate) -> int:
+    """Months between occurrences for month-anchored units."""
+    if template.frequency == BillFrequency.annual:
+        return 12 * template.interval_count
+    return template.interval_count
+
+
 def _bill_active_in_period(template: BillTemplate, period: str) -> bool:
-    """Return True if this template's frequency schedule falls on the given period."""
-    if template.frequency == BillFrequency.monthly:
-        return True
+    """Return True if a month-anchored template's schedule hits the period.
+
+    Weekly templates are occurrence-based and always return False here; use
+    `_occurrences_in_period` for them.
+    """
+    if template.frequency not in (BillFrequency.monthly, BillFrequency.annual):
+        return False
 
     # Use start_period (YYYY-MM) as the recurrence anchor when set.
     # Falls back to created_at UTC month for rows predating the column.
@@ -59,14 +95,54 @@ def _bill_active_in_period(template: BillTemplate, period: str) -> bool:
     if months_diff < 0:
         return False
 
-    if template.frequency == BillFrequency.every_2_months:
-        return months_diff % 2 == 0
-    if template.frequency == BillFrequency.quarterly:
-        return months_diff % 3 == 0
-    if template.frequency == BillFrequency.annual:
-        return months_diff % 12 == 0
+    return months_diff % _step_months(template) == 0
 
-    return False
+
+def _weekly_occurrences_in_period(template: BillTemplate, period: str) -> list[date]:
+    """All weekly occurrence dates that fall inside the given month."""
+    start = template.start_date
+    if start is None:
+        return []
+    year, month = map(int, period.split("-"))
+    first_day = date(year, month, 1)
+    last_day = date(year, month, monthrange(year, month)[1])
+    if start > last_day:
+        return []
+
+    step_days = 7 * template.interval_count
+    # First k with start + step*k >= first_day (k >= 0).
+    delta = (first_day - start).days
+    k = max(0, -(-delta // step_days))
+    occurrences: list[date] = []
+    current = _step_weeks(start, template.interval_count, k)
+    while current <= last_day:
+        occurrences.append(current)
+        k += 1
+        current = _step_weeks(start, template.interval_count, k)
+    return occurrences
+
+
+def _occurrences_in_period(template: BillTemplate, period: str) -> list[date]:
+    """Due dates this template's schedule produces inside a "YYYY-MM" period.
+
+    Weekly schedules can yield several occurrences per month; month-anchored
+    units yield zero or one.
+    """
+    if template.frequency == BillFrequency.weekly:
+        return _weekly_occurrences_in_period(template, period)
+    if _bill_active_in_period(template, period):
+        return [_due_date_for_period(period, template.due_day)]
+    return []
+
+
+def _first_occurrence_on_or_after(start: date, interval: int, target: date) -> date:
+    """First weekly occurrence on/after `target`, or `start` when it is future."""
+    if target <= start:
+        return start
+    step_days = 7 * interval
+    delta = (target - start).days
+    k = -(-delta // step_days)
+    return _step_weeks(start, interval, k)
 
 
 def backfill_template_instances(
@@ -74,47 +150,43 @@ def backfill_template_instances(
 ) -> int:
     """Create missing instances for a single template from from_period to to_period inclusive.
 
-    Returns the number of instances actually inserted (0 when every active
-    period already has a row, including soft-deleted tombstones).
+    One instance per occurrence (weekly templates may have several per month).
+    Returns the number of instances actually inserted (0 when every occurrence
+    already has a row, including soft-deleted tombstones). The idempotency key
+    is (bill_id, due_date).
     """
-    # Collect all periods in range where this template is active.
-    active_periods: list[str] = []
-    year, month = map(int, from_period.split("-"))
+    candidate_due_dates: list[date] = []
     period = from_period
     while period <= to_period:
-        if _bill_active_in_period(template, period):
-            active_periods.append(period)
-        month += 1
-        if month > 12:
-            month = 1
-            year += 1
-        period = f"{year:04d}-{month:02d}"
+        candidate_due_dates.extend(_occurrences_in_period(template, period))
+        period = _add_months(period, 1)
 
-    if not active_periods:
+    if not candidate_due_dates:
         return 0
 
-    # Single query for all existing periods — avoids N+1 per period.
-    existing_periods = {
-        row.period
-        for row in db.query(PaymentInstance.period).filter(
+    # Single query for all existing rows — avoids N+1 per occurrence.
+    existing_due_dates = {
+        row.due_date
+        for row in db.query(PaymentInstance.due_date).filter(
             PaymentInstance.bill_id == template.id,
-            PaymentInstance.period.in_(active_periods),
+            PaymentInstance.due_date.in_(candidate_due_dates),
         )
     }
 
     created = 0
-    for p in active_periods:
-        if p not in existing_periods:
-            db.add(
-                PaymentInstance(
-                    bill_id=template.id,
-                    period=p,
-                    due_date=_due_date_for_period(p, template.due_day),
-                    amount=template.amount,
-                    status=PaymentStatus.upcoming,
-                )
+    for due_date in candidate_due_dates:
+        if due_date in existing_due_dates:
+            continue
+        db.add(
+            PaymentInstance(
+                bill_id=template.id,
+                period=due_date.strftime("%Y-%m"),
+                due_date=due_date,
+                amount=template.amount,
+                status=PaymentStatus.upcoming,
             )
-            created += 1
+        )
+        created += 1
 
     if db.new:
         try:
@@ -151,7 +223,7 @@ def generate_future_instances(
     """Generate instances for current UTC month+1 through +months inclusive.
 
     Returns `(created, template_count)`; creation is idempotent via the
-    `(bill_id, period)` uniqueness check in `backfill_template_instances`.
+    `(bill_id, due_date)` uniqueness check in `backfill_template_instances`.
     """
     current = datetime.now(timezone.utc).strftime("%Y-%m")
     from_period = _add_months(current, 1)
@@ -165,57 +237,64 @@ def generate_future_instances(
 
 
 def ensure_current_period_instances(db: Session, period: str, user_id: int) -> None:
-    """Idempotently seed payment instances for eligible templates that are due in period."""
-    templates = (
-        db.query(BillTemplate)
-        .filter(
-            BillTemplate.user_id == user_id,
-            BillTemplate.is_archived.is_(False),
-            BillTemplate.is_paused.is_(False),
-            BillTemplate.frequency != BillFrequency.one_off,
-        )
-        .all()
-    )
+    """Idempotently seed payment instances for eligible templates in period.
+
+    Weekly templates get one row per occurrence; existence is keyed on
+    (bill_id, due_date) ignoring `is_deleted` so tombstones still block.
+    """
+    templates = eligible_for_generation(db, user_id)
     for template in templates:
-        if not _bill_active_in_period(template, period):
+        occurrences = _occurrences_in_period(template, period)
+        if not occurrences:
             continue
-        existing = (
-            db.query(PaymentInstance)
-            .filter(
+        existing_due_dates = {
+            row.due_date
+            for row in db.query(PaymentInstance.due_date).filter(
                 PaymentInstance.bill_id == template.id,
-                PaymentInstance.period == period,
+                PaymentInstance.due_date.in_(occurrences),
             )
-            .first()
-        )
-        if existing:
-            continue
-        instance = PaymentInstance(
-            bill_id=template.id,
-            period=period,
-            due_date=_due_date_for_period(period, template.due_day),
-            amount=template.amount,
-            status=PaymentStatus.upcoming,
-        )
-        db.add(instance)
+        }
+        for due_date in occurrences:
+            if due_date in existing_due_dates:
+                continue
+            db.add(
+                PaymentInstance(
+                    bill_id=template.id,
+                    period=period,
+                    due_date=due_date,
+                    amount=template.amount,
+                    status=PaymentStatus.upcoming,
+                )
+            )
     if db.new:
         db.commit()
 
 
 def generate_next_instance(
-    db: Session, template: BillTemplate, paid_period: str
+    db: Session, template: BillTemplate, paid_due_date: date
 ) -> PaymentInstance | None:
-    """Create the next-period instance after a payment. Idempotent."""
+    """Create the next instance after a payment. Idempotent on (bill_id, due_date)."""
     if template.frequency == BillFrequency.one_off:
         return None
 
-    next_period = _next_period(paid_period, template.frequency)
+    if template.frequency == BillFrequency.weekly:
+        if template.start_date is None:
+            return None
+        next_due_date = paid_due_date + timedelta(days=7 * template.interval_count)
+    else:
+        next_period = _next_period(
+            paid_due_date.strftime("%Y-%m"),
+            template.frequency,
+            template.interval_count,
+        )
+        next_due_date = _due_date_for_period(next_period, template.due_day)
 
     # idempotent: skip if already exists
     existing = (
         db.query(PaymentInstance)
         .filter(
             PaymentInstance.bill_id == template.id,
-            PaymentInstance.period == next_period,
+            PaymentInstance.due_date == next_due_date,
         )
         .first()
     )
@@ -224,8 +303,8 @@ def generate_next_instance(
 
     instance = PaymentInstance(
         bill_id=template.id,
-        period=next_period,
-        due_date=_due_date_for_period(next_period, template.due_day),
+        period=next_due_date.strftime("%Y-%m"),
+        due_date=next_due_date,
         amount=template.amount,
         status=PaymentStatus.upcoming,
     )
@@ -238,9 +317,44 @@ def generate_next_instance(
             db.query(PaymentInstance)
             .filter(
                 PaymentInstance.bill_id == template.id,
-                PaymentInstance.period == next_period,
+                PaymentInstance.due_date == next_due_date,
             )
             .first()
         )
     db.refresh(instance)
     return instance
+
+
+def recompute_weekly_instances(db: Session, template: BillTemplate, today: date) -> int:
+    """Re-space future unpaid instances after a weekly schedule change.
+
+    The first future instance moves to the first occurrence on/after `today`
+    (or `start_date` when it is still in the future); each following instance
+    lands one step later. Paid and soft-deleted rows are untouched. Returns the
+    number of rows updated; the caller owns the commit.
+    """
+    if template.frequency != BillFrequency.weekly or template.start_date is None:
+        return 0
+
+    instances = (
+        db.query(PaymentInstance)
+        .filter(
+            PaymentInstance.bill_id == template.id,
+            PaymentInstance.status != PaymentStatus.paid,
+            PaymentInstance.is_deleted.is_(False),
+            PaymentInstance.due_date >= today,
+        )
+        .order_by(PaymentInstance.due_date, PaymentInstance.id)
+        .all()
+    )
+    if not instances:
+        return 0
+
+    first_due = _first_occurrence_on_or_after(
+        template.start_date, template.interval_count, today
+    )
+    for index, instance in enumerate(instances):
+        new_due_date = _step_weeks(first_due, template.interval_count, index)
+        instance.due_date = new_due_date
+        instance.period = new_due_date.strftime("%Y-%m")
+    return len(instances)

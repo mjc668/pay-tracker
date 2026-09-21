@@ -38,9 +38,8 @@ class BillCategory(str, Enum):
 
 
 class BillFrequency(str, Enum):
+    weekly = "weekly"
     monthly = "monthly"
-    every_2_months = "every_2_months"
-    quarterly = "quarterly"
     annual = "annual"
     one_off = "one_off"
 
@@ -60,11 +59,15 @@ class BillTemplate(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[BillCategory] = mapped_column(String(50), nullable=False)
     frequency: Mapped[BillFrequency] = mapped_column(String(20), nullable=False)
+    interval_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )  # repeat every N units (weeks/months/years)
+    start_date: Mapped[date | None] = mapped_column(Date)  # weekly anchor
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="PLN")
     due_day: Mapped[int | None] = mapped_column(
         Integer
-    )  # day-of-month for monthly bills
+    )  # day-of-month for monthly/annual bills
     notes: Mapped[str | None] = mapped_column(Text)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     is_paused: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -84,11 +87,13 @@ class BillTemplate(Base):
 
 
 class PaymentInstance(Base):
-    """A single payment record for a specific period. Idempotent: (bill_id, period) is unique."""
+    """A single payment record. Idempotent: (bill_id, due_date) is unique."""
 
     __tablename__ = "payment_instances"
     __table_args__ = (
-        UniqueConstraint("bill_id", "period", name="uq_payment_instance_bill_period"),
+        UniqueConstraint(
+            "bill_id", "due_date", name="uq_payment_instance_bill_due_date"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

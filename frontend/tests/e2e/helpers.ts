@@ -41,6 +41,8 @@ export async function loginNewUser(page: Page): Promise<{ email: string; passwor
 export interface BillOverrides {
   category?: string;
   frequency?: string;
+  interval_count?: number;
+  start_date?: string | null;
   amount?: string;
   currency?: string;
   due_day?: number;

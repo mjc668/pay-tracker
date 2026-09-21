@@ -1,7 +1,21 @@
 import { apiFetch } from "./api";
 import { CATEGORY_ORDER } from "./categories";
 
-export type BillFrequency = "monthly" | "every_2_months" | "quarterly" | "annual" | "one_off";
+export type BillFrequency = "weekly" | "monthly" | "annual" | "one_off";
+
+const BILL_FREQUENCIES: readonly BillFrequency[] = ["weekly", "monthly", "annual", "one_off"];
+
+/**
+ * Retired frequency strings (`every_2_months`, `quarterly`) may still show up
+ * in stale client state or cached payloads; fall back to a known unit so
+ * labels never throw.
+ */
+export function normalizeBillFrequency(value: string | null | undefined): BillFrequency {
+  if (value === "every_2_months" || value === "quarterly") return "monthly";
+  return BILL_FREQUENCIES.includes(value as BillFrequency)
+    ? (value as BillFrequency)
+    : "monthly";
+}
 
 export type BillCategory = (typeof CATEGORY_ORDER)[number];
 
@@ -10,6 +24,8 @@ export interface BillTemplateOut {
   name: string;
   category: BillCategory;
   frequency: BillFrequency;
+  interval_count: number;
+  start_date: string | null;
   amount: string;
   currency: string;
   due_day: number | null;
@@ -25,6 +41,8 @@ export interface BillTemplateCreate {
   name: string;
   category: BillCategory;
   frequency: BillFrequency;
+  interval_count?: number;
+  start_date?: string | null;
   amount: string;
   currency?: string;
   due_day?: number | null;

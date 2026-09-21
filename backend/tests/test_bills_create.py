@@ -127,7 +127,15 @@ def test_create_bill_missing_required_name_returns_422(client):
 
 def test_create_bill_invalid_frequency_returns_422(client):
     token = register_and_login(client, "val_freq@test.com")
-    r = client.post("/bills", json=_bill(frequency="weekly"), headers=auth(token))
+    r = client.post("/bills", json=_bill(frequency="daily"), headers=auth(token))
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("legacy", ["every_2_months", "quarterly"])
+def test_create_bill_legacy_frequency_returns_422(client, legacy):
+    """Retired enum values are rejected on new writes."""
+    token = register_and_login(client, f"val_legacy_{legacy}@test.com")
+    r = client.post("/bills", json=_bill(frequency=legacy), headers=auth(token))
     assert r.status_code == 422
 
 
@@ -162,3 +170,136 @@ def test_create_bill_invalid_category_returns_422(client):
     token = register_and_login(client, "val_cat@test.com")
     r = client.post("/bills", json=_bill(category="unknown_cat"), headers=auth(token))
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Weekly schedules + interval bounds
+# ---------------------------------------------------------------------------
+
+
+def test_create_weekly_bill_requires_start_date(client):
+    token = register_and_login(client, "weekly_no_start@test.com")
+    r = client.post(
+        "/bills",
+        json=_bill(frequency="weekly", due_day=None),
+        headers=auth(token),
+    )
+    assert r.status_code == 422
+
+
+def test_create_weekly_bill_backfills_from_past_start_date(client):
+    """Occurrences run from start_date through the end of the current month."""
+    from datetime import date
+
+    today = date.today()
+    first_of_month = today.replace(day=1)
+    token = register_and_login(client, "weekly_backfill@test.com")
+    r = client.post(
+        "/bills",
+        json=_bill(
+            frequency="weekly",
+            start_date=first_of_month.isoformat(),
+            interval_count=1,
+            due_day=None,
+        ),
+        headers=auth(token),
+    )
+    assert r.status_code == 201
+    data = r.json()
+    assert data["frequency"] == "weekly"
+    assert data["interval_count"] == 1
+    assert data["start_date"] == first_of_month.isoformat()
+    assert data["due_day"] is None
+    assert data["start_period"] == first_of_month.strftime("%Y-%m")
+
+    period = today.strftime("%Y-%m")
+    payments = client.get(f"/bills/payments?month={period}", headers=auth(token)).json()
+    bill_payments = [p for p in payments if p["bill_id"] == data["id"]]
+    # The 1st/8th/15th/22nd/29th of a month → always at least 4 rows.
+    assert len(bill_payments) >= 4
+    assert all(p["period"] == period for p in bill_payments)
+    assert all(p["frequency"] == "weekly" for p in bill_payments)
+    assert all(p["interval_count"] == 1 for p in bill_payments)
+    assert all(p["start_date"] == first_of_month.isoformat() for p in bill_payments)
+
+
+def test_create_weekly_bill_future_start_date_creates_nothing(client):
+    from datetime import date, timedelta
+
+    today = date.today()
+    next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    token = register_and_login(client, "weekly_future@test.com")
+    r = client.post(
+        "/bills",
+        json=_bill(
+            frequency="weekly",
+            start_date=next_month.isoformat(),
+            due_day=None,
+        ),
+        headers=auth(token),
+    )
+    assert r.status_code == 201
+
+    payments = client.get(
+        f"/bills/payments?month={today.strftime('%Y-%m')}", headers=auth(token)
+    ).json()
+    assert payments == []
+
+
+@pytest.mark.parametrize(
+    "frequency,interval",
+    [
+        ("weekly", 5),
+        ("monthly", 13),
+        ("annual", 6),
+    ],
+)
+def test_create_bill_interval_out_of_bounds_returns_422(client, frequency, interval):
+    token = register_and_login(client, f"val_interval_{frequency}@test.com")
+    payload = _bill(frequency=frequency, interval_count=interval)
+    if frequency == "weekly":
+        payload["start_date"] = "2026-01-05"
+        payload["due_day"] = None
+    r = client.post("/bills", json=payload, headers=auth(token))
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "frequency,interval",
+    [
+        ("weekly", 4),
+        ("monthly", 12),
+        ("annual", 5),
+    ],
+)
+def test_create_bill_interval_at_bound_is_accepted(client, frequency, interval):
+    token = register_and_login(client, f"val_interval_ok_{frequency}@test.com")
+    payload = _bill(frequency=frequency, interval_count=interval)
+    if frequency == "weekly":
+        payload["start_date"] = "2026-01-05"
+        payload["due_day"] = None
+    r = client.post("/bills", json=payload, headers=auth(token))
+    assert r.status_code == 201, r.text
+    assert r.json()["interval_count"] == interval
+
+
+def test_create_one_off_forces_interval_one(client):
+    token = register_and_login(client, "val_oneoff_interval@test.com")
+    r = client.post(
+        "/bills",
+        json=_bill(frequency="one_off", interval_count=5, due_day=None),
+        headers=auth(token),
+    )
+    assert r.status_code == 201
+    assert r.json()["interval_count"] == 1
+
+
+def test_create_non_weekly_ignores_start_date(client):
+    token = register_and_login(client, "val_ignore_start@test.com")
+    r = client.post(
+        "/bills",
+        json=_bill(frequency="monthly", start_date="2026-01-05"),
+        headers=auth(token),
+    )
+    assert r.status_code == 201
+    assert r.json()["start_date"] is None

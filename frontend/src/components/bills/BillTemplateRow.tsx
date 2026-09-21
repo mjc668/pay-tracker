@@ -11,7 +11,11 @@ import {
 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import BillTemplateForm from "./BillTemplateForm";
-import type { BillTemplateOut, BillTemplateUpdate } from "@/lib/bills-api";
+import {
+  normalizeBillFrequency,
+  type BillTemplateOut,
+  type BillTemplateUpdate,
+} from "@/lib/bills-api";
 import { CATEGORY_BORDER } from "@/lib/categories";
 
 interface Props {
@@ -23,7 +27,8 @@ interface Props {
 }
 
 function formatDueLabel(template: BillTemplateOut, locale: string): string | null {
-  const { frequency, due_day, due_month, start_period } = template;
+  const { due_day, due_month, start_period, start_date } = template;
+  const frequency = normalizeBillFrequency(template.frequency);
 
   if (frequency === "one_off") {
     if (!start_period) return null;
@@ -34,6 +39,13 @@ function formatDueLabel(template: BillTemplateOut, locale: string): string | nul
     if (due_day != null) return `${monthName} ${due_day}`;
     return new Intl.DateTimeFormat(locale, { month: "short", year: "numeric" }).format(
       new Date(year, month - 1)
+    );
+  }
+
+  if (frequency === "weekly") {
+    if (!start_date) return null;
+    return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(
+      new Date(start_date + "T00:00:00")
     );
   }
 
@@ -59,6 +71,7 @@ export default function BillTemplateRow({
   const locale = useLocale();
   const [actionsOpen, setActionsOpen] = useState(false);
 
+  const frequency = normalizeBillFrequency(template.frequency);
   const dueLabel = formatDueLabel(template, locale);
 
   // Paused overrides category color with amber
@@ -95,11 +108,15 @@ export default function BillTemplateRow({
               {template.amount} {template.currency}
             </span>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400">
-              {t(`frequency.${template.frequency}` as never) ?? template.frequency}
+              {t(`frequency.${frequency}`, { count: template.interval_count ?? 1 })}
             </span>
             {dueLabel && (
               <span className="text-xs text-slate-400 dark:text-slate-500">
-                {t("dueOn")}&nbsp;{dueLabel}
+                {frequency === "weekly" ? (
+                  t("startsOn", { date: dueLabel })
+                ) : (
+                  <>{t("dueOn")}&nbsp;{dueLabel}</>
+                )}
               </span>
             )}
           </div>
@@ -158,6 +175,8 @@ export default function BillTemplateRow({
               name: template.name,
               category: template.category,
               frequency: template.frequency,
+              interval_count: template.interval_count,
+              start_date: template.start_date,
               amount: template.amount,
               currency: template.currency,
               due_day: template.due_day,

@@ -1,11 +1,11 @@
 """Integration tests for POST /bills/generate-instances (series generator).
 
 Covers the eligible-template filter, the current-month+1..+months range,
-idempotency via (bill_id, period), ownership errors, and period selection
-per frequency.
+idempotency via (bill_id, due_date), ownership errors, and period selection
+per frequency/interval.
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -106,12 +106,8 @@ def test_generate_periods_per_frequency(client_db):
     current = _current_month()
 
     monthly = _create_bill(client, token, {"name": "Monthly"})
-    every2 = _create_bill(
-        client, token, {"name": "Every 2", "frequency": "every_2_months"}
-    )
-    quarterly = _create_bill(
-        client, token, {"name": "Quarterly", "frequency": "quarterly"}
-    )
+    every2 = _create_bill(client, token, {"name": "Every 2", "interval_count": 2})
+    quarterly = _create_bill(client, token, {"name": "Quarterly", "interval_count": 3})
     annual = _create_bill(client, token, {"name": "Annual", "frequency": "annual"})
 
     r = _generate(client, token, months=12)
@@ -132,6 +128,108 @@ def test_generate_periods_per_frequency(client_db):
     # Annual anchored at the current month → only +12 falls in range.
     assert _periods_in_db(db, annual) == {_shift(current, 12)}
     assert data["created"] == 12 + 6 + 4 + 1
+
+
+def test_weekly_generates_all_occurrences(client_db):
+    client, db = client_db
+    token = register_and_login(client, "gen_weekly@test.com")
+    current = _current_month()
+
+    # Anchor on the first day of the current month so occurrences are dense.
+    start = date(int(current[:4]), int(current[5:]), 1)
+    bill_id = _create_bill(
+        client,
+        token,
+        {
+            "name": "Weekly",
+            "frequency": "weekly",
+            "start_date": start.isoformat(),
+            "due_day": None,
+        },
+    )
+
+    r = _generate(client, token, months=2)
+    assert r.status_code == 200, r.text
+    target_periods = {_shift(current, 1), _shift(current, 2)}
+
+    # Independent oracle: step 7 days at a time from the anchor.
+    expected: set[date] = set()
+    cursor = start
+    while cursor.strftime("%Y-%m") <= _shift(current, 2):
+        if cursor.strftime("%Y-%m") in target_periods:
+            expected.add(cursor)
+        cursor += timedelta(days=7)
+
+    assert r.json()["created"] == len(expected)
+    due_dates = {
+        row.due_date
+        for row in db.query(PaymentInstance).filter(
+            PaymentInstance.bill_id == bill_id,
+            PaymentInstance.period.in_(target_periods),
+        )
+    }
+    assert due_dates == expected
+
+
+def test_weekly_soft_deleted_occurrence_blocks_only_that_date(client_db):
+    client, db = client_db
+    token = register_and_login(client, "gen_weekly_tombstone@test.com")
+    current = _current_month()
+    target_period = _shift(current, 1)
+    start = date(int(current[:4]), int(current[5:]), 1)
+
+    bill_id = _create_bill(
+        client,
+        token,
+        {
+            "name": "Weekly",
+            "frequency": "weekly",
+            "start_date": start.isoformat(),
+            "due_day": None,
+        },
+    )
+
+    # First weekly occurrence that falls in the target month.
+    blocked_due_date = start
+    while blocked_due_date.strftime("%Y-%m") != target_period:
+        blocked_due_date += timedelta(days=7)
+
+    db.add(
+        PaymentInstance(
+            bill_id=bill_id,
+            period=target_period,
+            due_date=blocked_due_date,
+            amount=Decimal("120.00"),
+            status=PaymentStatus.upcoming,
+            is_deleted=True,
+        )
+    )
+    db.commit()
+
+    r = _generate(client, token, months=1)
+    assert r.status_code == 200, r.text
+
+    rows = (
+        db.query(PaymentInstance)
+        .filter(
+            PaymentInstance.bill_id == bill_id,
+            PaymentInstance.period == target_period,
+        )
+        .all()
+    )
+    by_due_date = {row.due_date: row for row in rows}
+    # The tombstone is retained and blocks only its own due date.
+    assert blocked_due_date in by_due_date
+    assert by_due_date[blocked_due_date].is_deleted is True
+
+    expected_active = {
+        start + timedelta(days=7 * k)
+        for k in range(0, 40)
+        if (start + timedelta(days=7 * k)).strftime("%Y-%m") == target_period
+        and start + timedelta(days=7 * k) != blocked_due_date
+    }
+    assert {row.due_date for row in rows if not row.is_deleted} == expected_active
+    assert r.json()["created"] == len(expected_active)
 
 
 def test_soft_deleted_instance_acts_as_tombstone(client_db):

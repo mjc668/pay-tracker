@@ -1,6 +1,12 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from pydantic import BaseModel, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 from app.models.bill import BillCategory, BillFrequency, PaymentStatus
 
 
@@ -8,6 +14,8 @@ class BillTemplateCreate(BaseModel):
     name: str
     category: BillCategory
     frequency: BillFrequency
+    interval_count: int = Field(1, ge=1)
+    start_date: date | None = None  # weekly anchor ("first payment date")
     amount: Decimal = Decimal("0")
     currency: str = "PLN"
     due_day: int | None = Field(None, ge=1, le=31)
@@ -20,6 +28,8 @@ class BillTemplateUpdate(BaseModel):
     name: str | None = None
     category: BillCategory | None = None
     frequency: BillFrequency | None = None
+    interval_count: int | None = Field(None, ge=1)
+    start_date: date | None = None
     amount: Decimal | None = None
     currency: str | None = None
     due_day: int | None = Field(None, ge=1, le=31)
@@ -36,6 +46,8 @@ class BillTemplateOut(BaseModel):
     name: str
     category: BillCategory
     frequency: BillFrequency
+    interval_count: int = 1
+    start_date: date | None = None
     amount: Decimal
     currency: str
     due_day: int | None
@@ -79,6 +91,8 @@ class PaymentInstanceOut(BaseModel):
     bill_name: str
     currency: str
     frequency: BillFrequency
+    interval_count: int = 1
+    start_date: date | None = None
     category: BillCategory
     email_sent_at: datetime | None
     payments: list[PaymentOut] = []
@@ -119,11 +133,19 @@ class GenerateInstancesOut(BaseModel):
     months: int
 
 
+_LEGACY_FREQUENCY_INTERVALS: dict[str, int] = {
+    "every_2_months": 2,
+    "quarterly": 3,
+}
+
+
 class BackupTemplate(BaseModel):
     id: int
     name: str
     category: str | None
     frequency: BillFrequency
+    interval_count: int = Field(1, ge=1)
+    start_date: str | None = None
     amount: Decimal
     currency: str
     due_day: int | None
@@ -132,6 +154,21 @@ class BackupTemplate(BaseModel):
     is_paused: bool
     start_period: str | None
     created_at: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_frequency(cls, data: object) -> object:
+        """Map pre-v5 `every_2_months`/`quarterly` to monthly + interval.
+
+        Only applies when the payload carries no explicit `interval_count`
+        (v5 exports always do), so a v5 backup is never rewritten.
+        """
+        if not isinstance(data, dict):
+            return data
+        interval = _LEGACY_FREQUENCY_INTERVALS.get(str(data.get("frequency")))
+        if interval is None or data.get("interval_count") is not None:
+            return data
+        return {**data, "frequency": "monthly", "interval_count": interval}
 
 
 class BackupInstance(BaseModel):

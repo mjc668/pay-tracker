@@ -217,6 +217,47 @@ def test_on_day_instance_sends_and_flips_flag(
 
 @patch("app.services.reminder_job.send_monthly_summary_email")
 @patch("app.services.reminder_job.send_reminder_email")
+def test_weekly_instances_fire_per_due_date(
+    mock_send, _mock_summary, db_session, db_sessionmaker
+):
+    """Two occurrences of one weekly bill carry independent reminder flags."""
+    today = _today_utc()
+    user = _make_user(db_session, notify_1_day_before=True, notify_on_day=True)
+    bill = BillTemplate(
+        name="Weekly",
+        frequency=BillFrequency.weekly,
+        interval_count=1,
+        start_date=today,
+        amount=Decimal("10.00"),
+        currency="PLN",
+        category=BillCategory.utilities,
+        user_id=user.id,
+    )
+    db_session.add(bill)
+    db_session.flush()
+    due_today = _make_instance(db_session, bill.id, due_date=today)
+    due_tomorrow = _make_instance(
+        db_session, bill.id, due_date=today + timedelta(days=1)
+    )
+    today_id, tomorrow_id = due_today.id, due_tomorrow.id
+    db_session.commit()
+
+    with _channels():
+        send_daily_reminders(db_sessionmaker, send_minute=480)
+
+    assert mock_send.call_count == 2
+
+    db_session.expire_all()
+    refreshed_today = db_session.get(PaymentInstance, today_id)
+    refreshed_tomorrow = db_session.get(PaymentInstance, tomorrow_id)
+    assert refreshed_today.reminder_sent_on_day is True
+    assert refreshed_today.reminder_sent_upcoming is False
+    assert refreshed_tomorrow.reminder_sent_upcoming is True
+    assert refreshed_tomorrow.reminder_sent_on_day is False
+
+
+@patch("app.services.reminder_job.send_monthly_summary_email")
+@patch("app.services.reminder_job.send_reminder_email")
 def test_already_sent_flag_skips_email(
     mock_send, _mock_summary, db_session, db_sessionmaker
 ):

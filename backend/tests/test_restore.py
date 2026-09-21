@@ -3,6 +3,8 @@
 import json
 from decimal import Decimal
 
+import pytest
+
 from tests.conftest import auth, register_and_login, sync_payments
 
 _BILL = {
@@ -127,7 +129,7 @@ def test_restore_happy_path(client):
     client.get("/bills/payments", headers=auth(tok))
 
     backup = client.get("/export/json", headers=auth(tok)).json()
-    assert backup["schema_version"] == 4
+    assert backup["schema_version"] == 5
 
     r = _upload(client, tok, backup)
     assert r.status_code == 200
@@ -293,7 +295,7 @@ def test_round_trip_field_level(client):
     assert r.status_code == 200
 
     backup = client.get("/export/json", headers=auth(tok)).json()
-    assert backup["schema_version"] == 4
+    assert backup["schema_version"] == 5
     n_templates = len(backup["bill_templates"])
     n_instances = len(backup["payment_instances"])
     n_payments = len(backup["payments"])
@@ -488,7 +490,7 @@ def test_v3_backup_synthesizes_ledger_payments(client):
     assert r.json()["restored_instances"] == 1
 
     after = client.get("/export/json", headers=auth(tok)).json()
-    assert after["schema_version"] == 4
+    assert after["schema_version"] == 5
     assert len(after["payments"]) == 1
     payment = after["payments"][0]
     assert payment["instance_id"] == after["payment_instances"][0]["id"]
@@ -603,3 +605,91 @@ def test_restore_pydantic_validation_error_returns_422(client):
         headers=auth(tok),
     )
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# v5 schema: interval_count / start_date and legacy frequency normalization
+# ---------------------------------------------------------------------------
+
+
+def _template_dict(**overrides) -> dict:
+    base = {
+        "id": 1,
+        "name": "Legacy Bill",
+        "category": "utilities",
+        "frequency": "monthly",
+        "amount": 120.00,
+        "currency": "PLN",
+        "due_day": 15,
+        "notes": None,
+        "is_archived": False,
+        "is_paused": False,
+        "start_period": "2026-01",
+        "created_at": "2026-01-01T00:00:00+00:00",
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.parametrize(
+    "legacy,interval",
+    [("every_2_months", 2), ("quarterly", 3)],
+)
+def test_restore_normalizes_legacy_frequency(client, legacy, interval):
+    """v2-v4 backups map every_2_months/quarterly to monthly + interval."""
+    tok = register_and_login(client, f"legacy_{legacy}@test.com")
+    payload = _make_backup([_template_dict(frequency=legacy)], [], schema_version=3)
+
+    r = _upload(client, tok, payload)
+    assert r.status_code == 200, r.text
+
+    bills = client.get("/bills", headers=auth(tok)).json()
+    assert len(bills) == 1
+    assert bills[0]["frequency"] == "monthly"
+    assert bills[0]["interval_count"] == interval
+
+
+def test_restore_legacy_frequency_with_interval_count_is_rejected(client):
+    """Normalization only applies when interval_count is absent (v5 payloads
+    always carry it), so an explicit interval with a legacy unit is invalid."""
+    tok = register_and_login(client, "legacy_interval@test.com")
+    payload = _make_backup(
+        [_template_dict(frequency="quarterly", interval_count=3)],
+        [],
+        schema_version=3,
+    )
+
+    r = _upload(client, tok, payload)
+    assert r.status_code == 422
+
+
+def test_v5_round_trip_weekly_interval_and_start_date(client):
+    tok = register_and_login(client, "v5weekly@test.com")
+    r = client.post(
+        "/bills",
+        json={
+            **_BILL,
+            "frequency": "weekly",
+            "start_date": "2026-01-05",
+            "interval_count": 2,
+            "due_day": None,
+        },
+        headers=auth(tok),
+    )
+    assert r.status_code == 201, r.text
+
+    backup = client.get("/export/json", headers=auth(tok)).json()
+    assert backup["schema_version"] == 5
+    template = backup["bill_templates"][0]
+    assert template["frequency"] == "weekly"
+    assert template["interval_count"] == 2
+    assert template["start_date"] == "2026-01-05"
+
+    r = _upload(client, tok, backup)
+    assert r.status_code == 200, r.text
+
+    bills = client.get("/bills", headers=auth(tok)).json()
+    assert len(bills) == 1
+    assert bills[0]["frequency"] == "weekly"
+    assert bills[0]["interval_count"] == 2
+    assert bills[0]["start_date"] == "2026-01-05"

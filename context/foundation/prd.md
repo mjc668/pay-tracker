@@ -94,7 +94,10 @@ household finance manager does not need to check the dashboard proactively.
 ### Bill Templates
 
 - FR-003: User can create a bill template with name, amount, currency, category, due day of month,
-  recurrence type, and paused flag. Priority: must-have
+  recurrence type and interval, and paused flag. Priority: must-have
+  > Recurrence is a unit (weekly / monthly / yearly / one-off) plus an interval count
+  > ("every N" — weeks 1–4, months 1–12, years 1–5). Weekly bills anchor on a
+  > first-payment date and can produce several instances per month.
   > Currency is a per-template string (PLN / EUR / USD / custom); default is PLN.
   > Socratic: Category kept as must-have — needed for export reporting and filtering.
 

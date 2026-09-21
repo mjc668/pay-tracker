@@ -29,7 +29,7 @@ from app.schemas.stats import (
     StatsSummary,
     TrendPoint,
 )
-from app.services.recurrence import _bill_active_in_period
+from app.services.recurrence import _occurrences_in_period
 
 DEFAULT_CURRENCY = "PLN"
 ATTENTION_LIMIT = 10
@@ -191,8 +191,10 @@ def _forecast(
     totals = {period: Decimal("0") for period in periods}
     for template in templates:
         for period in periods:
-            if _bill_active_in_period(template, period):
-                totals[period] += template.amount
+            # Weekly months can hold several occurrences, so count dates.
+            totals[period] += template.amount * len(
+                _occurrences_in_period(template, period)
+            )
 
     return [
         ForecastPoint(period=period, expected_total=totals[period])
