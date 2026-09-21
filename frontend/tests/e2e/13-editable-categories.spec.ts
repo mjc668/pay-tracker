@@ -49,7 +49,7 @@ test('custom category can be created, used, renamed, archived, and deleted', asy
   await expect(row).toBeVisible();
   await row.getByRole('button', { name: 'Rename' }).click();
   await categoriesTile.locator('input[aria-label="Rename"]').fill(renamedName);
-  await row.getByRole('button', { name: 'Save' }).click();
+  await categoriesTile.getByRole('button', { name: 'Save' }).click();
   await expect(categoriesTile.getByText(renamedName, { exact: true })).toBeVisible();
 
   // Assert: the bill relabels with the new category name
