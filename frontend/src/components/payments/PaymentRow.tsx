@@ -5,6 +5,7 @@ import { AlertCircle, AtSign, CheckCircle, Loader2, MessageSquare, RotateCcw, Tr
 import { useTranslations, useLocale } from "next-intl";
 import type { PaymentInstanceOut } from "@/lib/payments-api";
 import { deletePaymentEvent, revertPay } from "@/lib/payments-api";
+import { categoryLabel } from "@/lib/categories-api";
 
 export const STATUS_STYLES: Record<string, string> = {
   upcoming:
@@ -25,6 +26,7 @@ interface Props {
 
 export default function PaymentRow({ instance, onMarkPaid, onDelete, onReverted, readOnly = false }: Props) {
   const t = useTranslations("PaymentRow");
+  const tRoot = useTranslations();
   const locale = useLocale();
   const [reverting, setReverting] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<number | null>(null);
@@ -143,10 +145,15 @@ export default function PaymentRow({ instance, onMarkPaid, onDelete, onReverted,
   return (
     <div className={`rounded-xl border border-slate-200 px-4 py-3 shadow-sm dark:border-slate-700 transition-colors ${tileGradientClass()}`}>
       <div className="flex flex-col gap-0.5">
-        {/* Name */}
-        <span className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">
-          {instance.bill_name}
-        </span>
+        {/* Name + category */}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">
+            {instance.bill_name}
+          </span>
+          <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+            {categoryLabel(instance.category, tRoot)}
+          </span>
+        </div>
         {/* Amount */}
         {parseFloat(instance.amount) > 0 && (
           <span className="text-xs font-medium text-slate-600 dark:text-slate-300">

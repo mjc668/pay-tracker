@@ -12,14 +12,13 @@ import {
   Loader2,
   X,
 } from "lucide-react";
-import { Fragment } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import {
   fetchPayments,
   syncInstances,
   type PaymentInstanceOut,
 } from "@/lib/payments-api";
-import { categoryLabel, type Category } from "@/lib/categories-api";
+import { type Category } from "@/lib/categories-api";
 import { categoryValue, sortCategories } from "@/lib/categories";
 import { downloadXlsx } from "@/lib/export-api";
 import { SessionExpiredError } from "@/lib/api";
@@ -64,50 +63,20 @@ function uniqueCategories(categories: Category[]): Category[] {
   return [...byId.values()];
 }
 
-function CategorySummary({
-  group,
-  todayStr,
-  labels,
-}: {
-  group: PaymentInstanceOut[];
-  todayStr: string;
-  labels: {
-    upcoming: string;
-    overdueToday: string;
-    overdue: string;
-    paid: string;
-  };
-}) {
-  const upcomingCount = group.filter((i) => i.status === "upcoming").length;
-  const overdueTodayCount = group.filter(
-    (i) => i.status === "overdue" && i.due_date === todayStr,
-  ).length;
-  const overdueOlderCount = group.filter(
-    (i) => i.status === "overdue" && i.due_date < todayStr,
-  ).length;
-  const paidCount = group.filter((i) => i.status === "paid").length;
+const SECTION_KEYS = ["overdue", "upcoming", "paid"] as const;
+type SectionKey = (typeof SECTION_KEYS)[number];
 
-  const segments: { key: string; text: string; className: string }[] = [];
-  if (upcomingCount > 0)
-    segments.push({ key: "upcoming", text: `${upcomingCount} ${labels.upcoming}`, className: "text-slate-500 dark:text-slate-400" });
-  if (overdueTodayCount > 0)
-    segments.push({ key: "overdueToday", text: `${overdueTodayCount} ${labels.overdueToday}`, className: "text-orange-500 dark:text-orange-400" });
-  if (overdueOlderCount > 0)
-    segments.push({ key: "overdueOlder", text: `${overdueOlderCount} ${labels.overdue}`, className: "text-red-500 dark:text-red-400" });
-  if (paidCount > 0)
-    segments.push({ key: "paid", text: `${paidCount} ${labels.paid}`, className: "text-emerald-600 dark:text-emerald-400" });
+const SECTION_LABEL_KEYS = {
+  overdue: "sectionOverdue",
+  upcoming: "sectionUpcoming",
+  paid: "sectionPaid",
+} as const satisfies Record<SectionKey, string>;
 
-  return (
-    <span className="flex items-center gap-1 text-xs font-medium">
-      {segments.map((seg, i) => (
-        <Fragment key={seg.key}>
-          {i > 0 && <span className="text-slate-300 dark:text-slate-600">·</span>}
-          <span className={seg.className}>{seg.text}</span>
-        </Fragment>
-      ))}
-    </span>
-  );
-}
+const SECTION_TITLE_CLASS: Record<SectionKey, string> = {
+  overdue: "text-red-500 dark:text-red-400",
+  upcoming: "text-slate-400 dark:text-slate-500",
+  paid: "text-emerald-600 dark:text-emerald-400",
+};
 
 export default function PaymentsPage() {
   return (
@@ -212,10 +181,7 @@ function PaymentsPageInner() {
   );
 
   const { collapsed, toggle, collapseAll, expandAll, allCollapsed } =
-    useCollapsedCategories(
-      "payments-collapsed-categories",
-      activeCategories.map((category) => String(category.id)),
-    );
+    useCollapsedCategories("payments-collapsed-sections", SECTION_KEYS);
 
   const searchQuery = searchFilter.trim().toLowerCase();
   const hasActiveFilters =
@@ -229,6 +195,18 @@ function PaymentsPageInner() {
     if (searchQuery && !inst.bill_name.toLowerCase().includes(searchQuery)) return false;
     return true;
   });
+
+  // Urgency-first list: overdue, then upcoming, then paid — each by due date.
+  const sections = SECTION_KEYS.map((key) => ({
+    key,
+    items: filteredInstances
+      .filter((inst) => inst.status === key)
+      .sort(
+        (a, b) =>
+          a.due_date.localeCompare(b.due_date) ||
+          a.bill_name.localeCompare(b.bill_name),
+      ),
+  })).filter((section) => section.items.length > 0);
 
   function clearFilters() {
     setStatusFilter("all");
@@ -426,7 +404,7 @@ function PaymentsPageInner() {
                     .filter(Boolean)
                     .join(" · ")}
             </p>
-            {activeCategories.length > 1 && (
+            {sections.length > 1 && (
               <button
                 onClick={allCollapsed ? expandAll : collapseAll}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200"
@@ -514,60 +492,44 @@ function PaymentsPageInner() {
       {/* Payment list */}
       {!loading && !loadError && view === "list" && filteredInstances.length > 0 && (
         <div className="flex flex-col gap-4">
-          {activeCategories
-            .filter((cat) => filteredInstances.some((inst) => inst.category.id === cat.id))
-            .map((cat) => {
-              const groupKey = String(cat.id);
-              const group = filteredInstances.filter((inst) => inst.category.id === cat.id);
-              return (
-                <div key={cat.id}>
-                  <button
-                    onClick={() => toggle(groupKey)}
-                    className="mb-3 flex w-full items-center gap-2.5 text-left"
-                  >
-                    <ChevronRight
-                      size={12}
-                      className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-150 ${
-                        collapsed.has(groupKey) ? "" : "rotate-90"
-                      }`}
+          {sections.map(({ key, items }) => (
+            <div key={key}>
+              <button
+                onClick={() => toggle(key)}
+                className="mb-3 flex w-full items-center gap-2.5 text-left"
+              >
+                <ChevronRight
+                  size={12}
+                  className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-150 ${
+                    collapsed.has(key) ? "" : "rotate-90"
+                  }`}
+                />
+                <span
+                  className={`text-xs font-bold uppercase tracking-widest shrink-0 ${SECTION_TITLE_CLASS[key]}`}
+                >
+                  {t(SECTION_LABEL_KEYS[key])}
+                </span>
+                <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
+                  {items.length}
+                </span>
+                <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700/60" />
+              </button>
+              {!collapsed.has(key) && (
+                <div className="flex flex-col gap-2">
+                  {items.map((inst) => (
+                    <PaymentRow
+                      key={inst.id}
+                      instance={inst}
+                      readOnly={false}
+                      onMarkPaid={setDialogTarget}
+                      onDelete={setDeleteTarget}
+                      onReverted={handleInstanceReverted}
                     />
-                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 shrink-0">
-                      {categoryLabel(cat, tRoot)}
-                    </span>
-                    <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
-                      {group.length}
-                    </span>
-                    {collapsed.has(groupKey) && (
-                      <CategorySummary
-                        group={group}
-                        todayStr={todayStr}
-                        labels={{
-                          upcoming: t("summaryUpcoming"),
-                          overdueToday: t("summaryOverdueToday"),
-                          overdue: t("summaryOverdue"),
-                          paid: t("summaryPaid"),
-                        }}
-                      />
-                    )}
-                    <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700/60" />
-                  </button>
-                  {!collapsed.has(groupKey) && (
-                    <div className="flex flex-col gap-2">
-                      {group.map((inst) => (
-                        <PaymentRow
-                          key={inst.id}
-                          instance={inst}
-                          readOnly={false}
-                          onMarkPaid={setDialogTarget}
-                          onDelete={setDeleteTarget}
-                          onReverted={handleInstanceReverted}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  ))}
                 </div>
-              );
-            })}
+              )}
+            </div>
+          ))}
         </div>
       )}
 
