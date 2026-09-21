@@ -48,7 +48,7 @@ test('custom category can be created, used, renamed, archived, and deleted', asy
   const row = categoriesTile.getByRole('listitem').filter({ hasText: customName });
   await expect(row).toBeVisible();
   await row.getByRole('button', { name: 'Rename' }).click();
-  await row.getByLabel('Rename').fill(renamedName);
+  await categoriesTile.locator('input[aria-label="Rename"]').fill(renamedName);
   await row.getByRole('button', { name: 'Save' }).click();
   await expect(categoriesTile.getByText(renamedName, { exact: true })).toBeVisible();
 
