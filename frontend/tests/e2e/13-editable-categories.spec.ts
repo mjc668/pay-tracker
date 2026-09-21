@@ -38,7 +38,9 @@ test('custom category can be created, used, renamed, archived, and deleted', asy
 
   // Assert: the bill is grouped under the custom category label
   await expect(page.getByText(billName)).toBeVisible();
-  await expect(page.getByText(customName, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: new RegExp(customName) }),
+  ).toBeVisible();
 
   // Step: rename the category in Settings
   await page.goto('/dashboard/settings');
@@ -53,7 +55,9 @@ test('custom category can be created, used, renamed, archived, and deleted', asy
   // Assert: the bill relabels with the new category name
   await page.goto('/dashboard/bills');
   await expect(page.getByText(billName)).toBeVisible();
-  await expect(page.getByText(renamedName, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: new RegExp(renamedName) }),
+  ).toBeVisible();
   await expect(page.getByText(customName, { exact: true })).toHaveCount(0);
 
   // Step: deleting an in-use category is refused with the server message
@@ -109,5 +113,7 @@ test('inline add in the bill form creates and selects a category', async ({ page
 
   // Assert: the bill is grouped under the inline-created category
   await expect(page.getByText(billName)).toBeVisible();
-  await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: new RegExp(categoryName) }),
+  ).toBeVisible();
 });
