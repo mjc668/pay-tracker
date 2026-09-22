@@ -738,9 +738,15 @@ def test_paid_window_is_rolling_30_days(client_db):
     today = date.today()
     period = today.strftime("%Y-%m")
 
-    inside_bill = _create_bill(client, token, {"name": "Paid today"})
-    edge_bill = _create_bill(client, token, {"name": "Paid 30 days ago"})
-    outside_bill = _create_bill(client, token, {"name": "Paid 31 days ago"})
+    inside_bill = _create_bill(
+        client, token, {"name": "Paid today", "frequency": "one_off"}
+    )
+    edge_bill = _create_bill(
+        client, token, {"name": "Paid 30 days ago", "frequency": "one_off"}
+    )
+    outside_bill = _create_bill(
+        client, token, {"name": "Paid 31 days ago", "frequency": "one_off"}
+    )
 
     inside = _insert_instance(
         db, inside_bill, period=period, due_date=today, amount="10.00"

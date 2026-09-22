@@ -123,7 +123,7 @@ def test_include_overdue_skips_paid_deleted_and_future_rows(client_db):
         db,
         bill_id,
         period=previous,
-        due_date=today - timedelta(days=10),
+        due_date=today - timedelta(days=11),
         is_deleted=True,
     )
     # A future-dated row in an earlier period is not overdue
