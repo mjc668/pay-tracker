@@ -1,9 +1,10 @@
 ---
 change_id: dashboard-stats
 title: Dashboard stats — dependency-free SVG charts and household overview
-status: in-progress
+status: archived
 created: 2026-09-20
 updated: 2026-09-20
+archived_at: 2026-09-22T00:00:00Z
 ---
 
 ## Notes

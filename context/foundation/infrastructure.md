@@ -1,6 +1,7 @@
 ---
 project: pay-tracker
 researched_at: 2026-06-24
+updated: 2026-09-22
 recommended_platform: self-hosted-docker-compose
 runner_up: railway
 context_type: mvp
@@ -189,11 +190,86 @@ These steps assume Hetzner CX22 (Ubuntu 24.04) + Cloudflare DNS + GHCR image pub
    # Test restore monthly: gunzip -c /backups/db-YYYYMMDD.sql.gz | psql ...
    ```
 
+## HTTPS & PWA deployment
+
+PWA installation and secure cookies both require HTTPS (browsers exempt only `localhost`). A reference Caddy config lives at `infra/caddy/Caddyfile`; all options below keep the backend's month-based routes working unchanged.
+
+Relevant env vars:
+
+| Env var | HTTPS value | Why |
+|---|---|---|
+| `COOKIE_SECURE` | `true` | Adds `Secure` to the auth cookies. Over plain HTTP browsers drop them and login bounces back to `/login` — the backend logs a startup warning if this is misconfigured. |
+| `TRUST_PROXY` | `true` | Rate limiting uses the real client IP from `X-Forwarded-For`. |
+| `APP_BASE_URL` | `https://pay.example.com` | Used in password-reset links. |
+| `ALLOWED_ORIGINS` | `["https://pay.example.com"]` | Cross-origin mode only (separate API hostname). |
+| `NEXT_PUBLIC_API_URL` | empty | Same-origin mode: the proxy forwards `/api/*` to the backend. |
+| `API_PREFIX` | `/api` | Pairs with an empty `NEXT_PUBLIC_API_URL`. |
+
+### Option A — Caddy (recommended)
+
+`infra/caddy/Caddyfile` terminates HTTPS, serves the frontend, and proxies `/api/*` to the backend with the prefix stripped:
+
+```caddy
+pay.example.com {
+	reverse_proxy 10.112.200.5:3010
+
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy 10.112.200.5:8010
+	}
+}
+```
+
+- **Public domain:** point an A record at the host; Caddy obtains and renews Let's Encrypt certificates automatically.
+- **LAN-only:** use a local name (e.g. `pay.local`) and add `tls internal`. Caddy signs with its own CA — install Caddy's root certificate on every device, or PWA installation can fail silently on some platforms.
+
+### Option B — nginx + Certbot
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name pay.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/pay.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pay.example.com/privkey.pem;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8010/;   # trailing slash strips /api
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3010;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+    }
+}
+```
+
+Renew with `certbot renew` (systemd timer or cron). Keep the renewal in the same managed stack as the app — the pre-mortem above is exactly the failure mode where a forgotten renewal breaks PWA installs when the certificate expires.
+
+### Option C — Cloudflare proxy (public domain)
+
+Point the domain's nameservers at Cloudflare and proxy the A record to the host. TLS terminates at Cloudflare (no Certbot) and the origin can stay HTTP on the LAN. Still set `COOKIE_SECURE=true` and `TRUST_PROXY=true` — the browser sees HTTPS. Use Cloudflare Tunnel if no inbound ports should be opened.
+
+### Verify the install
+
+1. DevTools → Application → Cookies: `access_token` and `auth_logged_in` show the `Secure` flag.
+2. DevTools → Application → Service Workers: the service worker is active and the manifest lists the Pay Tracker icons.
+3. The install prompt appears (Chrome/Edge address bar; iOS Safari → Share → Add to Home Screen).
+4. Layout stays usable at 375px.
+
+Common pitfalls:
+
+- **Mixed content:** an HTTPS page calling an `http://` API is blocked — use same-origin `/api` or an HTTPS API hostname.
+- **`COOKIE_SECURE=true` over plain HTTP:** browsers drop the auth cookies; login appears to succeed then bounces to `/login`.
+- **`tls internal`:** the Caddy CA must be trusted on every device.
+- **Cross-origin mode:** `ALLOWED_ORIGINS` must list the exact HTTPS frontend origin.
+
 ## Out of Scope
 
 The following were not evaluated in this research:
 - CI/CD pipeline configuration (GitHub Actions deploy workflow)
-- Nginx reverse proxy configuration for non-Cloudflare setups
 - Production-scale architecture (multi-region, HA, disaster recovery)
 - Email delivery provider configuration (FR-012)
-- HTTPS/PWA setup for local-only deployments without a domain

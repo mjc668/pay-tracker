@@ -1,9 +1,10 @@
 ---
 change_id: payment-ledger
 title: Payment ledger — multiple payment events per instance with recording UI
-status: in-progress
+status: archived
 created: 2026-09-20
 updated: 2026-09-20
+archived_at: 2026-09-22T00:00:00Z
 ---
 
 ## Notes

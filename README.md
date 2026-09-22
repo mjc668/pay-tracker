@@ -37,8 +37,8 @@ Pull the published images from GitHub Container Registry and run the app with ju
 
 ```bash
 mkdir pay-tracker && cd pay-tracker
-curl -O https://raw.githubusercontent.com/marwin87/pay-tracker/main/docker-compose.prod.yml
-curl -O https://raw.githubusercontent.com/marwin87/pay-tracker/main/.env.example
+curl -O https://raw.githubusercontent.com/mjc668/pay-tracker/main/docker-compose.prod.yml
+curl -O https://raw.githubusercontent.com/mjc668/pay-tracker/main/.env.example
 cp .env.example .env
 ```
 
@@ -57,7 +57,7 @@ To try it with pre-seeded demo data instead of starting empty:
 docker compose -f docker-compose.prod.yml --profile demo up -d
 ```
 
-Pin a specific released version instead of the latest one by setting `PAY_TRACKER_VERSION` (e.g. `PAY_TRACKER_VERSION=1.1.0 docker compose -f docker-compose.prod.yml up -d`).
+Pin a specific released version instead of the latest one by setting `PAY_TRACKER_VERSION` (e.g. `PAY_TRACKER_VERSION=2.2.0 docker compose -f docker-compose.prod.yml up -d`).
 
 
 ## Getting started
@@ -161,12 +161,12 @@ docker compose exec backend uv run alembic revision --autogenerate -m "describe 
 - **Android:** browser menu (⋮) → Add to Home screen
 - **iOS Safari:** Share (⎋) → Add to Home Screen
 
-Requires HTTPS in production. Localhost works as an exception in most browsers.
+Requires HTTPS in production. Localhost works as an exception in most browsers. Setup guides for Caddy, nginx + Certbot, and Cloudflare are in [`context/foundation/infrastructure.md`](context/foundation/infrastructure.md#https--pwa-deployment).
 
 
 ## Export & backup
 
 - **XLSX** — Payments page → Export Excel. One sheet per month, all columns.
 - **JSON backup** — Settings → Download Backup. Full data export scoped to your account.
-- **Restore** — Settings → Restore from Backup. Shows a comparison of your current data vs. the backup (bill/payment counts, export date) before you confirm, then atomically replaces your data. Requires `schema_version: 2` or newer.
+- **Restore** — Settings → Restore from Backup. Shows a comparison of your current data vs. the backup (bill/payment counts, export date) before you confirm, then atomically replaces your data. Accepts `schema_version` 2–6.
 - **Undo a restore** — every restore automatically snapshots your prior data server-side first (skipped if you had no existing bills). If a restore turns out to be a mistake, Settings → Restore shows a "Restore This Snapshot" option with the snapshot's timestamp, letting you revert. Snapshots are kept for `RESTORE_SNAPSHOT_RETENTION_DAYS` (default 7) and only the single most recent one is retained per account.

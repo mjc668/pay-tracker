@@ -1,9 +1,10 @@
 ---
 change_id: p3-ui-wins
 title: P3 — default currency, calendar, filters, forecast, pre-generation
-status: in-progress
+status: archived
 created: 2026-09-20
 updated: 2026-09-20
+archived_at: 2026-09-22T00:00:00Z
 ---
 
 ## Notes

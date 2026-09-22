@@ -3,7 +3,7 @@ project: pay-tracker
 version: 1
 status: draft
 created: 2026-06-11
-updated: 2026-07-10
+updated: 2026-09-22
 prd_version: 1
 main_goal: low-complexity
 top_blocker: none
@@ -272,7 +272,6 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Parallel with:** —
 - **Blockers:** —
 - **Unknowns:** —
-- **TODO (impl-review follow-up):** Wire a master "Enable email reminders" toggle UI on the settings page — a checkbox or switch bound to `email_reminders_enabled` that calls `updateMe({ email_reminders_enabled })`. The backend field and scheduler filter are now correctly wired (impl-review fix, 2026-06-16); only the settings page UI toggle remains.
 - **Risk:** Email reminder timing adds 4 new User model columns and tightens the `reminder_sent_overdue` semantics from "any overdue" to "exactly 1 day after due" — a behavioral change for existing users. Migration defaults `notify_1_day_before = True` to preserve prior behavior. Plan at `context/changes/settings-page/plan.md`.
 - **Status:** done
 
@@ -372,7 +371,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 
 ## Open Roadmap Questions
 
-1. **Local-mode PWA and HTTPS** — A self-hosted deployment without HTTPS cannot install as a PWA on most browsers. A reverse-proxy or certificate setup guide is needed in deployment documentation. — Owner: implementation team. Block: S-05 (no — does not affect core PWA config or cloud-mode installability).
+None open. (Question 1, Local-mode PWA and HTTPS, was resolved 2026-09-22 — see `infrastructure.md` § HTTPS & PWA deployment for Caddy, nginx + Certbot, and Cloudflare setups.)
 
 ## Parked
 
@@ -403,3 +402,22 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **S-17: user can request a password reset link by email; receive a secure one-time link; and set a new password via that link.** — Archived 2026-06-24 → `context/archive/2026-06-24-reset-password/`. Lesson: —.
 - **S-18: before confirming a restore, the user sees a comparison of their current data against the backup file being uploaded — bill count, payment count, and the backup's export date — plus a visual warning if the backup has fewer bills or payments than current data.** — Archived 2026-07-10 → `context/archive/2026-07-10-restore-safety-comparison/`. Lesson: —.
 - **S-19: immediately before a restore executes its destructive delete-and-replace, the server automatically snapshots the user's current data, so that data can be recovered if the restore turns out to have been a mistake — a safety net that holds even if the user proceeds past the S-18 warning, or if the request bypasses the UI entirely (e.g. direct API call).** — Archived 2026-07-10 → `context/archive/2026-07-10-restore-auto-backup-safety-net/`. Lesson: —.
+
+## Post-roadmap releases
+
+Shipped after the planned slices completed. Each maps to an archived change folder where one exists.
+
+| Release | Change | Summary | Archived change |
+|---|---|---|---|
+| v1.0.9 | security-hardening | Rate limiting, JWT issuer/audience + token-version revocation, cookie hardening, CSP/security headers, `/docs` disabled in production, Caddy reference, pg_dump backup script, CI supply-chain audits | — |
+| v1.0.10–v1.0.12 | auth/UX hotfixes | Stale-cookie login redirect loop, `COOKIE_SECURE`-over-HTTP startup warning, hydration mismatches on authenticated pages | — |
+| v1.1.0 | payment-ledger | Per-instance payment events (partial payments, dates, notes) with history UI and per-event delete; backup schema v4 | `context/archive/2026-09-22-payment-ledger/` |
+| v1.2.0 | dashboard-stats | Household overview with dependency-free SVG trend chart, category bars, and an overdue/next-30-days list | `context/archive/2026-09-22-dashboard-stats/` |
+| v1.3.0 | p3-ui-wins | Account default currency (+ AUD), payments calendar, filters on both lists, six-month forecast, series generator | `context/archive/2026-09-22-p3-ui-wins/` |
+| v1.3.1 | nav | Explicit Dashboard item in the header nav | — |
+| v1.4.0 | apprise-notifications | Apprise channel with SMTP fallback; Settings status and test notification | `context/archive/2026-09-22-apprise-notifications/` |
+| v2.0.0 | recurrence-flexibility | Weekly recurrence plus every-N weeks/months/years; idempotency key moved to `(bill_id, due_date)`; backup schema v5 | `context/archive/2026-09-22-recurrence-flexibility/` |
+| v2.1.0 | editable-categories | Per-user editable categories with translatable defaults, CRUD API, Settings tile, inline add; backup schema v6 | `context/archive/2026-09-22-editable-categories/` |
+| v2.1.1 | payments-order | Payments list ordered Overdue → Upcoming → Paid instead of by category | — |
+| v2.1.2 | one-off-fix | One-off bills generate their single instance; past-dated one-offs show as overdue | — |
+| v2.2.0 | dashboard-rework | Rolling-window swatches (7 days / 30 days / paid progress) and a bills-vs-payments grouped-bar chart; HTTPS/PWA deployment guide | — |
