@@ -660,7 +660,9 @@ def test_upcoming_windows_are_rolling_and_remaining_based(client_db):
     month_bill = _create_bill(client, token, {"name": "Due in 30"})
     late_bill = _create_bill(client, token, {"name": "Due in 31"})
     overdue_bill = _create_bill(client, token, {"name": "Overdue"})
-    paid_bill = _create_bill(client, token, {"name": "Fully paid"})
+    paid_bill = _create_bill(
+        client, token, {"name": "Fully paid", "frequency": "one_off"}
+    )
     eur_bill = _create_bill(client, token, {"name": "EUR soon", "currency": "EUR"})
 
     _insert_instance(db, today_bill, period=period, due_date=today, amount="10.00")
