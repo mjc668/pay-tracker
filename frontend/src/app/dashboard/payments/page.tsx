@@ -499,7 +499,7 @@ function PaymentsPageInner() {
       {!loading && !loadError && view === "list" && filteredInstances.length > 0 && (
         <div className="flex flex-col gap-4">
           {sections.map(({ key, items }) => (
-            <div key={key}>
+            <div key={key} data-testid={`payment-section-${key}`}>
               <button
                 onClick={() => toggle(key)}
                 className="mb-3 flex w-full items-center gap-2.5 text-left"

@@ -86,5 +86,9 @@ test('generating payments creates future instances for a recurring bill', async 
   ).padStart(2, '0')}`;
 
   await page.goto(`/dashboard/payments?month=${nextMonth}`);
-  await expect(page.getByText(billName)).toBeVisible();
+  // The current month's instance may also be carried into the Overdue section,
+  // so scope the assertion to the Upcoming section.
+  await expect(
+    page.getByTestId('payment-section-upcoming').getByText(billName).first(),
+  ).toBeVisible();
 });
