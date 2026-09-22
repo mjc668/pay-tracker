@@ -2,6 +2,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
@@ -198,6 +199,7 @@ def create_bill(
 @router.get("/payments", response_model=list[PaymentInstanceOut])
 def list_payments(
     month: str | None = None,  # "YYYY-MM"
+    include_overdue: bool = Query(False),
     db: Session = Depends(get_db),
     me: User = Depends(current_user),
 ):
@@ -209,6 +211,20 @@ def list_payments(
     # NOTE: instance seeding was intentionally moved to POST /bills/sync-instances
     # so that GET list_payments remains side-effect free.
 
+    if include_overdue:
+        # The selected month plus unpaid, already-overdue rows from earlier
+        # periods, so the current view's Overdue section is complete.
+        scope = or_(
+            PaymentInstance.period == month,
+            and_(
+                PaymentInstance.period < month,
+                PaymentInstance.status != PaymentStatus.paid,
+                PaymentInstance.due_date < today,
+            ),
+        )
+    else:
+        scope = PaymentInstance.period == month
+
     instances = (
         db.query(PaymentInstance)
         .options(
@@ -218,8 +234,8 @@ def list_payments(
         .join(BillTemplate, PaymentInstance.bill_id == BillTemplate.id)
         .filter(
             BillTemplate.user_id == me.id,
-            PaymentInstance.period == month,
             PaymentInstance.is_deleted.is_(False),
+            scope,
         )
         .order_by(PaymentInstance.due_date)
         .all()

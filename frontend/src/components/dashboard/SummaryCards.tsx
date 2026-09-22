@@ -2,12 +2,13 @@
 
 import { AlertCircle, CalendarClock, CalendarRange, CheckCircle2 } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
-import type { StatsSummary, UpcomingWindow } from "@/lib/stats-api";
+import type { PaidWindow, StatsSummary, UpcomingWindow } from "@/lib/stats-api";
 
 interface Props {
   summary: StatsSummary;
   upcoming7d: UpcomingWindow;
   upcoming30d: UpcomingWindow;
+  paid30d: PaidWindow;
   currency: string;
 }
 
@@ -30,6 +31,7 @@ export default function SummaryCards({
   summary,
   upcoming7d,
   upcoming30d,
+  paid30d,
   currency,
 }: Props) {
   const t = useTranslations("Dashboard");
@@ -40,8 +42,8 @@ export default function SummaryCards({
     maximumFractionDigits: 2,
   });
 
-  const paid = parseAmount(summary.paid_total);
-  const due = parseAmount(summary.due_total);
+  const paid = parseAmount(paid30d.paid_total);
+  const due = parseAmount(paid30d.due_total);
   const paidPercent =
     due > 0 ? Math.min(Math.max((paid / due) * 100, 0), 100) : 0;
 

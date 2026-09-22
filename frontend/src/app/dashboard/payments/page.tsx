@@ -119,7 +119,7 @@ function PaymentsPageInner() {
     let cancelled = false;
     const isCurrentOrFuture = selectedMonth >= currentMonth;
     (isCurrentOrFuture ? syncInstances(selectedMonth).catch(() => {}) : Promise.resolve())
-      .then(() => fetchPayments(selectedMonth))
+      .then(() => fetchPayments(selectedMonth, isCurrentOrFuture))
       .then((data) => {
         if (!cancelled) {
           setInstances(data);
@@ -207,6 +207,12 @@ function PaymentsPageInner() {
           a.bill_name.localeCompare(b.bill_name),
       ),
   })).filter((section) => section.items.length > 0);
+
+  // The calendar stays month-scoped even when the list includes overdue items
+  // carried over from earlier periods.
+  const calendarInstances = filteredInstances.filter(
+    (inst) => inst.period === selectedMonth,
+  );
 
   function clearFilters() {
     setStatusFilter("all");
@@ -477,11 +483,11 @@ function PaymentsPageInner() {
       {!loading &&
         !loadError &&
         view === "calendar" &&
-        filteredInstances.length > 0 && (
+        calendarInstances.length > 0 && (
           <PaymentCalendar
             key={selectedMonth}
             month={selectedMonth}
-            instances={filteredInstances}
+            instances={calendarInstances}
             todayStr={todayStr}
             onMarkPaid={setDialogTarget}
             onDelete={setDeleteTarget}
@@ -534,7 +540,10 @@ function PaymentsPageInner() {
       )}
 
       {/* Empty state */}
-      {!loading && !loadError && instances.length === 0 && (
+      {!loading &&
+        !loadError &&
+        (instances.length === 0 ||
+          (view === "calendar" && calendarInstances.length === 0)) && (
         <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 px-6 py-16 text-center">
           <p className="font-medium text-slate-700 dark:text-slate-300">
             {t("noPayments")}

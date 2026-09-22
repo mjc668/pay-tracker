@@ -2,6 +2,11 @@ import { apiFetch } from "./api";
 import type { Category } from "./categories-api";
 import type { PaymentStatus } from "./payments-api";
 
+export interface PaidWindow {
+  paid_total: string;
+  due_total: string;
+}
+
 export interface StatsSummary {
   due_total: string;
   paid_total: string;
@@ -56,6 +61,7 @@ export interface StatsOverview {
   forecast: ForecastPoint[];
   upcoming_7d: UpcomingWindow;
   upcoming_30d: UpcomingWindow;
+  paid_30d: PaidWindow;
   by_category: CategoryStat[];
   attention: AttentionItem[];
 }

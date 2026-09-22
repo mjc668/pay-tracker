@@ -63,7 +63,7 @@
         "cardOverdue": "Overdue",
         "cardNext7d": "Next 7 days",
         "cardNext30d": "Rolling 30 days",
-        "cardPaid": "Paid this month",
+        "cardPaid": "Paid last 30 days",
         "cardCount": "{count, plural, =0 {no bills} one {# bill} other {# bills}}",
         "cardPaidProgress": "{percent}% of {amount}",
         "trendTitle": "Bills vs payments",

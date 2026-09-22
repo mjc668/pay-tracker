@@ -25,6 +25,7 @@ from app.schemas.stats import (
     AttentionItem,
     CategoryStat,
     ForecastPoint,
+    PaidWindow,
     StatsOverviewOut,
     StatsSummary,
     TrendPoint,
@@ -349,6 +350,39 @@ def _upcoming_window(
     return UpcomingWindow(count=int(row[0]), total=Decimal(row[1]))
 
 
+def _paid_window(db: Session, user_id: int, currency: str, today: date) -> PaidWindow:
+    """Amounts paid (ledger) and billed over the rolling 30 days ending today."""
+    start = today - timedelta(days=30)
+    paid = (
+        db.query(func.coalesce(func.sum(Payment.amount), 0))
+        .select_from(Payment)
+        .join(PaymentInstance, Payment.instance_id == PaymentInstance.id)
+        .join(BillTemplate, PaymentInstance.bill_id == BillTemplate.id)
+        .filter(
+            BillTemplate.user_id == user_id,
+            BillTemplate.currency == currency,
+            PaymentInstance.is_deleted.is_(False),
+            Payment.paid_on >= start,
+            Payment.paid_on <= today,
+        )
+        .scalar()
+    )
+    due = (
+        db.query(func.coalesce(func.sum(PaymentInstance.amount), 0))
+        .select_from(PaymentInstance)
+        .join(BillTemplate, PaymentInstance.bill_id == BillTemplate.id)
+        .filter(
+            BillTemplate.user_id == user_id,
+            BillTemplate.currency == currency,
+            PaymentInstance.is_deleted.is_(False),
+            PaymentInstance.due_date >= start,
+            PaymentInstance.due_date <= today,
+        )
+        .scalar()
+    )
+    return PaidWindow(paid_total=Decimal(paid or 0), due_total=Decimal(due or 0))
+
+
 def build_stats_overview(
     db: Session, user: User, month: str, months: int
 ) -> StatsOverviewOut:
@@ -366,6 +400,7 @@ def build_stats_overview(
         forecast=_forecast(db, user.id, currency, month),
         upcoming_7d=_upcoming_window(db, user.id, currency, today, 7),
         upcoming_30d=_upcoming_window(db, user.id, currency, today, 30),
+        paid_30d=_paid_window(db, user.id, currency, today),
         by_category=_by_category(
             db, user.id, currency, periods, user.language_preference
         ),

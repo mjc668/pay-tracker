@@ -63,7 +63,7 @@
         "cardOverdue": "Zaległe",
         "cardNext7d": "Najbliższe 7 dni",
         "cardNext30d": "Najbliższe 30 dni",
-        "cardPaid": "Zapłacone w tym miesiącu",
+        "cardPaid": "Zapłacone (30 dni)",
         "cardCount": "{count, plural, =0 {brak rachunków} one {# rachunek} few {# rachunki} many {# rachunków} other {# rachunku}}",
         "cardPaidProgress": "{percent}% z {amount}",
         "trendTitle": "Rachunki a płatności",

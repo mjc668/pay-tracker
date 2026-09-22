@@ -732,6 +732,57 @@ def test_upcoming_windows_are_rolling_and_remaining_based(client_db):
     assert _dec(data["upcoming_30d"]["total"]) == Decimal("145.00")
 
 
+def test_paid_window_is_rolling_30_days(client_db):
+    client, db = client_db
+    token = register_and_login(client, "stats_paid_window@test.com")
+    today = date.today()
+    period = today.strftime("%Y-%m")
+
+    inside_bill = _create_bill(client, token, {"name": "Paid today"})
+    edge_bill = _create_bill(client, token, {"name": "Paid 30 days ago"})
+    outside_bill = _create_bill(client, token, {"name": "Paid 31 days ago"})
+
+    inside = _insert_instance(
+        db, inside_bill, period=period, due_date=today, amount="10.00"
+    )
+    edge = _insert_instance(
+        db,
+        edge_bill,
+        period=period,
+        due_date=today - timedelta(days=30),
+        amount="20.00",
+    )
+    outside = _insert_instance(
+        db,
+        outside_bill,
+        period=period,
+        due_date=today - timedelta(days=31),
+        amount="40.00",
+    )
+
+    _pay(client, token, inside.id, "10.00", paid_on=today.isoformat())
+    _pay(
+        client,
+        token,
+        edge.id,
+        "20.00",
+        paid_on=(today - timedelta(days=30)).isoformat(),
+    )
+    _pay(
+        client,
+        token,
+        outside.id,
+        "40.00",
+        paid_on=(today - timedelta(days=31)).isoformat(),
+    )
+
+    window = _overview(client, token)["paid_30d"]
+
+    # Boundary rows (today and today-30) count; today-31 does not
+    assert _dec(window["paid_total"]) == Decimal("30.00")
+    assert _dec(window["due_total"]) == Decimal("30.00")
+
+
 def test_attention_limit_and_ordering(client_db):
     client, db = client_db
     token = register_and_login(client, "stats_attention_limit@test.com")

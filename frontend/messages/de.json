@@ -63,7 +63,7 @@
         "cardOverdue": "Überfällig",
         "cardNext7d": "Nächste 7 Tage",
         "cardNext30d": "Rollierende 30 Tage",
-        "cardPaid": "Diesen Monat bezahlt",
+        "cardPaid": "Bezahlt (30 Tage)",
         "cardCount": "{count, plural, =0 {keine Rechnungen} one {# Rechnung} other {# Rechnungen}}",
         "cardPaidProgress": "{percent}% von {amount}",
         "trendTitle": "Rechnungen vs. Zahlungen",

@@ -169,6 +169,7 @@ export default function DashboardPage() {
               summary={stats.summary}
               upcoming7d={stats.upcoming_7d}
               upcoming30d={stats.upcoming_30d}
+              paid30d={stats.paid_30d}
               currency={stats.currency}
             />
           </section>

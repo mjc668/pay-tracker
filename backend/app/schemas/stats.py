@@ -43,6 +43,13 @@ class UpcomingWindow(BaseModel):
     total: Decimal
 
 
+class PaidWindow(BaseModel):
+    """Rolling window ending today: paid vs due over the last 30 days."""
+
+    paid_total: Decimal
+    due_total: Decimal
+
+
 class CategoryStat(BaseModel):
     category: CategoryOut
     paid_total: Decimal
@@ -70,5 +77,6 @@ class StatsOverviewOut(BaseModel):
     forecast: list[ForecastPoint]
     upcoming_7d: UpcomingWindow
     upcoming_30d: UpcomingWindow
+    paid_30d: PaidWindow
     by_category: list[CategoryStat]
     attention: list[AttentionItem]

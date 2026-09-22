@@ -40,10 +40,14 @@ export function syncInstances(month: string): Promise<void> {
   });
 }
 
-export function fetchPayments(month: string): Promise<PaymentInstanceOut[]> {
-  return apiFetch<PaymentInstanceOut[]>(
-    `/bills/payments?month=${encodeURIComponent(month)}`,
-  );
+export function fetchPayments(
+  month: string,
+  includeOverdue = false,
+): Promise<PaymentInstanceOut[]> {
+  const query = `/bills/payments?month=${encodeURIComponent(month)}${
+    includeOverdue ? "&include_overdue=true" : ""
+  }`;
+  return apiFetch<PaymentInstanceOut[]>(query);
 }
 
 export function markPaid(
