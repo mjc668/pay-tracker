@@ -405,7 +405,7 @@ def test_forecast_counts_weekly_occurrences_per_month(client_db):
         assert _dec(point["expected_total"]) == Decimal("10.00") * occurrences, point
 
 
-def test_forecast_excludes_paused_archived_and_one_off(client_db):
+def test_forecast_excludes_paused_and_archived(client_db):
     client, db = client_db
     token = register_and_login(client, "stats_forecast_excluded@test.com")
     current = date.today().strftime("%Y-%m")
@@ -415,11 +415,6 @@ def test_forecast_excludes_paused_archived_and_one_off(client_db):
         client, token, {"name": "Paused", "amount": "100.00", "is_paused": True}
     )
     archived = _create_bill(client, token, {"name": "Archived", "amount": "1000.00"})
-    _create_bill(
-        client,
-        token,
-        {"name": "One-off", "amount": "10000.00", "frequency": "one_off"},
-    )
 
     r = client.post(f"/bills/{archived}/archive", headers=auth(token))
     assert r.status_code == 204, r.text
@@ -429,6 +424,32 @@ def test_forecast_excludes_paused_archived_and_one_off(client_db):
         _shift(current, offset) for offset in range(1, 7)
     ]
     assert all(_dec(point["expected_total"]) == Decimal("10.00") for point in forecast)
+
+
+def test_forecast_includes_one_off_in_its_month(client_db):
+    client, db = client_db
+    token = register_and_login(client, "stats_forecast_oneoff@test.com")
+    today = date.today()
+    if today.month == 12:
+        pytest.skip("Year rollover makes due_month ambiguous for one-off bills")
+
+    next_month = today.month + 1
+    _create_bill(
+        client,
+        token,
+        {
+            "name": "Domain",
+            "amount": "250.00",
+            "frequency": "one_off",
+            "due_month": next_month,
+            "due_day": 15,
+        },
+    )
+
+    forecast = _overview(client, token)["forecast"]
+    by_period = {point["period"]: _dec(point["expected_total"]) for point in forecast}
+    assert by_period[f"{today.year}-{next_month:02d}"] == Decimal("250.00")
+    assert sum(by_period.values()) == Decimal("250.00")
 
 
 def test_forecast_only_counts_primary_currency(client):

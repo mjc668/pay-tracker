@@ -13,7 +13,6 @@ from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
 from app.models.bill import (
-    BillFrequency,
     BillTemplate,
     PaymentInstance,
     PaymentStatus,
@@ -184,7 +183,6 @@ def _forecast(
             BillTemplate.user_id == user_id,
             BillTemplate.is_archived.is_(False),
             BillTemplate.is_paused.is_(False),
-            BillTemplate.frequency != BillFrequency.one_off,
             BillTemplate.currency == currency,
         )
         .all()

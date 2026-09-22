@@ -108,9 +108,57 @@ def test_create_annual_bill_with_past_due_month_sets_next_year(client):
     )
     assert r.status_code == 201
     data = r.json()
-    # start_period should be next year since due_month < now.month
+    # Annual renewals roll forward: the next occurrence is next year's cycle
     expected_year = today.year + 1
     assert data["start_period"].startswith(str(expected_year))
+
+
+def test_create_one_off_bill_with_past_due_month_is_overdue(client):
+    """One-off bills materialize their single occurrence, overdue when past."""
+    from datetime import date
+
+    today = date.today()
+    if today.month <= 1:
+        pytest.skip("Requires a past month (month > January)")
+
+    past_month = today.month - 1
+    past_period = f"{today.year}-{past_month:02d}"
+    token = register_and_login(client, "one_off_past@test.com")
+    r = client.post(
+        "/bills",
+        json=_bill(frequency="one_off", due_month=past_month, due_day=None),
+        headers=auth(token),
+    )
+    assert r.status_code == 201
+    bill_id = r.json()["id"]
+
+    r = client.get(f"/bills/payments?month={past_period}", headers=auth(token))
+    assert r.status_code == 200
+    instances = [p for p in r.json() if p["bill_id"] == bill_id]
+    assert len(instances) == 1
+    assert instances[0]["status"] == "overdue"
+
+
+def test_create_one_off_bill_in_current_month_appears_after_sync(client):
+    """One-off bills used to never generate an instance — ensure they do."""
+    from datetime import date
+
+    today = date.today()
+    token = register_and_login(client, "one_off_current@test.com")
+    r = client.post(
+        "/bills",
+        json=_bill(
+            frequency="one_off", due_month=today.month, due_day=max(today.day, 1)
+        ),
+        headers=auth(token),
+    )
+    assert r.status_code == 201
+    bill_id = r.json()["id"]
+
+    sync_payments(client, token)
+    payments = client.get("/bills/payments", headers=auth(token)).json()
+    instances = [p for p in payments if p["bill_id"] == bill_id]
+    assert len(instances) == 1
 
 
 # ---------------------------------------------------------------------------

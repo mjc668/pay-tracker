@@ -269,7 +269,9 @@ def test_occurrences_in_period_weekly_without_start_date() -> None:
         (BillFrequency.monthly, 1, "2026-01", 31, "2026-02", [date(2026, 2, 28)]),
         (BillFrequency.annual, 1, "2026-06", 10, "2027-06", [date(2027, 6, 10)]),
         (BillFrequency.annual, 1, "2026-06", 10, "2027-05", []),
-        (BillFrequency.one_off, 1, "2026-01", 15, "2026-01", []),
+        # one-off bills have exactly one occurrence, in their anchor period
+        (BillFrequency.one_off, 1, "2026-01", 15, "2026-01", [date(2026, 1, 15)]),
+        (BillFrequency.one_off, 1, "2026-01", 15, "2026-02", []),
     ],
 )
 def test_occurrences_in_period_month_anchored(
@@ -671,15 +673,23 @@ def test_ensure_skips_paused_template(db_session) -> None:
     assert db_session.query(PaymentInstance).count() == 0
 
 
-def test_ensure_skips_one_off_template(db_session) -> None:
+def test_ensure_creates_one_off_only_in_anchor_period(db_session) -> None:
     user = _make_user(db_session)
-    _make_bill(db_session, user.id, frequency=BillFrequency.one_off)
+    _make_bill(
+        db_session, user.id, frequency=BillFrequency.one_off, start_period="2026-01"
+    )
     user_id = user.id
     db_session.commit()
 
+    # A different period produces nothing...
     ensure_current_period_instances(db_session, "2026-06", user_id)
-
     assert db_session.query(PaymentInstance).count() == 0
+
+    # ...the anchor period materializes the single occurrence.
+    ensure_current_period_instances(db_session, "2026-01", user_id)
+    instances = db_session.query(PaymentInstance).all()
+    assert len(instances) == 1
+    assert instances[0].due_date == date(2026, 1, 15)
 
 
 def test_ensure_skips_inactive_period(db_session) -> None:

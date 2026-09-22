@@ -153,10 +153,13 @@ def create_bill(
     if frequency == BF.weekly:
         assert start_date is not None  # guaranteed by validate_schedule
         start_period = start_date.strftime("%Y-%m")
-    elif body.due_month and frequency in (BF.annual, BF.one_off):
+    elif body.due_month and frequency == BF.annual:
+        # Annual renewals: a month that already passed means next year's cycle.
         year = now.year if body.due_month >= now.month else now.year + 1
         start_period = f"{year:04d}-{body.due_month:02d}"
-    elif body.due_month and frequency == BF.monthly:
+    elif body.due_month:
+        # Monthly/one-off: anchor to the current year so a date that already
+        # passed lands as overdue instead of being pushed a year out.
         start_period = f"{now.year:04d}-{body.due_month:02d}"
     else:
         start_period = now.strftime("%Y-%m")
@@ -182,10 +185,9 @@ def create_bill(
     db.refresh(bill)
 
     current_period = now.strftime("%Y-%m")
-    if frequency == BF.weekly:
-        # Occurrences run from start_date through the end of the current month.
-        backfill_template_instances(db, bill, start_period, current_period)
-    elif frequency == BF.monthly and start_period < current_period:
+    if frequency == BF.weekly or start_period < current_period:
+        # Weekly runs from its first date; past-anchored bills (monthly,
+        # annual, one-off) materialize their overdue occurrence(s) now.
         backfill_template_instances(db, bill, start_period, current_period)
 
     return bill
@@ -507,7 +509,10 @@ def update_bill(
     # Recalculate start_period when due_month changes for annual/one_off
     if due_month is not None and effective_frequency in (BF.annual, BF.one_off):
         now = datetime.now(timezone.utc)
-        year = now.year if due_month >= now.month else now.year + 1
+        if effective_frequency == BF.annual:
+            year = now.year if due_month >= now.month else now.year + 1
+        else:
+            year = now.year
         bill.start_period = f"{year:04d}-{due_month:02d}"
 
     if effective_frequency == BF.weekly:

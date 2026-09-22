@@ -126,10 +126,16 @@ def _occurrences_in_period(template: BillTemplate, period: str) -> list[date]:
     """Due dates this template's schedule produces inside a "YYYY-MM" period.
 
     Weekly schedules can yield several occurrences per month; month-anchored
-    units yield zero or one.
+    units yield zero or one; one-off bills yield their single due date in the
+    anchor period.
     """
     if template.frequency == BillFrequency.weekly:
         return _weekly_occurrences_in_period(template, period)
+    if template.frequency == BillFrequency.one_off:
+        anchor = template.start_period or template.created_at.strftime("%Y-%m")
+        if period != anchor:
+            return []
+        return [_due_date_for_period(period, template.due_day)]
     if _bill_active_in_period(template, period):
         return [_due_date_for_period(period, template.due_day)]
     return []
@@ -241,8 +247,18 @@ def ensure_current_period_instances(db: Session, period: str, user_id: int) -> N
 
     Weekly templates get one row per occurrence; existence is keyed on
     (bill_id, due_date) ignoring `is_deleted` so tombstones still block.
+    One-off bills are included here (their single occurrence) — unlike the
+    series generator, which deliberately skips them.
     """
-    templates = eligible_for_generation(db, user_id)
+    templates = (
+        db.query(BillTemplate)
+        .filter(
+            BillTemplate.user_id == user_id,
+            BillTemplate.is_archived.is_(False),
+            BillTemplate.is_paused.is_(False),
+        )
+        .all()
+    )
     for template in templates:
         occurrences = _occurrences_in_period(template, period)
         if not occurrences:
