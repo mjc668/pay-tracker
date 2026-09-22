@@ -1,9 +1,10 @@
 /**
  * Flow 9: Dashboard stats overview
  * Risk: stats data is not rendered — the summary card ignores the recorded
- *       partial payment, the trend chart SVG is missing, the forecast series
- *       is absent for an active recurring bill, the mini-calendar is missing,
- *       or the attention row links to the wrong month.
+ *       partial payment, the bills vs payments chart SVG is missing, the
+ *       forecast series is absent for an active recurring bill, the rolling
+ *       window cards are missing, the mini-calendar is missing, or the
+ *       attention row links to the wrong month.
  * Real boundaries: auth, POST /bills, POST /bills/payments/:id/pay,
  *                  GET /bills/payments, GET /stats/overview, client render.
  */
@@ -43,8 +44,20 @@ test('dashboard renders summary, trend chart and attention link after a partial 
   await expect(paidCard).toBeVisible();
   await expect(paidCard).toContainText(half);
 
-  // Assert: the trend chart renders as an accessible image
-  await expect(page.getByRole('img', { name: 'Spend trend chart' })).toBeVisible();
+  // Assert: the bills vs payments chart renders as an accessible image
+  await expect(
+    page.getByRole('img', { name: 'Bills vs payments chart' }),
+  ).toBeVisible();
+
+  // Assert: the rolling-window cards render. Their counts depend on today's
+  // date relative to the bill's due day (15), so assert them structurally
+  // (visible, primary currency shown) rather than hardcoding amounts.
+  const next7dCard = page.getByTestId('summary-next-7d');
+  await expect(next7dCard).toBeVisible();
+  await expect(next7dCard).toContainText('PLN');
+  const next30dCard = page.getByTestId('summary-next-30d');
+  await expect(next30dCard).toBeVisible();
+  await expect(next30dCard).toContainText('PLN');
 
   // Assert: the attention list shows the unpaid bill and links to its period
   const attentionRow = page.getByRole('link', { name: new RegExp(billName) });

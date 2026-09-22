@@ -36,6 +36,13 @@ class ForecastPoint(BaseModel):
     expected_total: Decimal
 
 
+class UpcomingWindow(BaseModel):
+    """Rolling window from today: unpaid instances due within N days."""
+
+    count: int
+    total: Decimal
+
+
 class CategoryStat(BaseModel):
     category: CategoryOut
     paid_total: Decimal
@@ -61,5 +68,7 @@ class StatsOverviewOut(BaseModel):
     summary: StatsSummary
     trend: list[TrendPoint]
     forecast: list[ForecastPoint]
+    upcoming_7d: UpcomingWindow
+    upcoming_30d: UpcomingWindow
     by_category: list[CategoryStat]
     attention: list[AttentionItem]

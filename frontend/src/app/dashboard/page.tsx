@@ -11,7 +11,7 @@ import {
 } from "@/lib/payments-api";
 import { SessionExpiredError } from "@/lib/api";
 import SummaryCards from "@/components/dashboard/SummaryCards";
-import SpendTrendChart from "@/components/dashboard/SpendTrendChart";
+import BillsVsPaymentsChart from "@/components/dashboard/BillsVsPaymentsChart";
 import CategoryBars from "@/components/dashboard/CategoryBars";
 import AttentionList from "@/components/dashboard/AttentionList";
 import MiniCalendar from "@/components/dashboard/MiniCalendar";
@@ -165,29 +165,50 @@ export default function DashboardPage() {
             <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
               {monthLabel}
             </h2>
-            <SummaryCards summary={stats.summary} currency={stats.currency} />
-            {payments !== null && paymentsMonth !== null && (
-              <div className="mt-4 max-w-xs">
-                <MiniCalendar
-                  month={paymentsMonth}
-                  instances={payments}
-                  todayStr={getTodayKey()}
-                />
-              </div>
-            )}
+            <SummaryCards
+              summary={stats.summary}
+              upcoming7d={stats.upcoming_7d}
+              upcoming30d={stats.upcoming_30d}
+              currency={stats.currency}
+            />
           </section>
 
-          {/* Spend trend */}
+          {/* Bills vs payments */}
           <section>
             <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
               {t("trendTitle")}
             </h2>
-            <SpendTrendChart
+            <BillsVsPaymentsChart
               trend={stats.trend}
               forecast={stats.forecast}
               currency={stats.currency}
             />
           </section>
+
+          {/* Calendar + attention */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <section>
+              {payments !== null && paymentsMonth !== null && (
+                <>
+                  <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                    {t("miniCalendarTitle")}
+                  </h2>
+                  <MiniCalendar
+                    month={paymentsMonth}
+                    instances={payments}
+                    todayStr={getTodayKey()}
+                  />
+                </>
+              )}
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                {t("attentionTitle")}
+              </h2>
+              <AttentionList items={stats.attention} currency={stats.currency} />
+            </section>
+          </div>
 
           {/* Category breakdown */}
           <section>
@@ -195,14 +216,6 @@ export default function DashboardPage() {
               {t("categoryTitle")}
             </h2>
             <CategoryBars categories={stats.by_category} currency={stats.currency} />
-          </section>
-
-          {/* Attention list */}
-          <section>
-            <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-              {t("attentionTitle")}
-            </h2>
-            <AttentionList items={stats.attention} currency={stats.currency} />
           </section>
         </div>
       )}

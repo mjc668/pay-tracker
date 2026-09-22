@@ -648,6 +648,88 @@ def test_attention_selection_and_fields(client_db):
     assert second["status"] == "upcoming"
 
 
+def test_upcoming_windows_are_rolling_and_remaining_based(client_db):
+    client, db = client_db
+    token = register_and_login(client, "stats_windows@test.com")
+    today = date.today()
+    period = today.strftime("%Y-%m")
+
+    today_bill = _create_bill(client, token, {"name": "Due today"})
+    week_bill = _create_bill(client, token, {"name": "Due in 7"})
+    next_week_bill = _create_bill(client, token, {"name": "Due in 8"})
+    month_bill = _create_bill(client, token, {"name": "Due in 30"})
+    late_bill = _create_bill(client, token, {"name": "Due in 31"})
+    overdue_bill = _create_bill(client, token, {"name": "Overdue"})
+    paid_bill = _create_bill(client, token, {"name": "Fully paid"})
+    eur_bill = _create_bill(client, token, {"name": "EUR soon", "currency": "EUR"})
+
+    _insert_instance(db, today_bill, period=period, due_date=today, amount="10.00")
+    week = _insert_instance(
+        db,
+        week_bill,
+        period=period,
+        due_date=today + timedelta(days=7),
+        amount="20.00",
+    )
+    _insert_instance(
+        db,
+        next_week_bill,
+        period=period,
+        due_date=today + timedelta(days=8),
+        amount="40.00",
+    )
+    _insert_instance(
+        db,
+        month_bill,
+        period=period,
+        due_date=today + timedelta(days=30),
+        amount="80.00",
+    )
+    _insert_instance(
+        db,
+        late_bill,
+        period=period,
+        due_date=today + timedelta(days=31),
+        amount="160.00",
+    )
+    _insert_instance(
+        db,
+        overdue_bill,
+        period=period,
+        due_date=today - timedelta(days=1),
+        amount="320.00",
+        status=PaymentStatus.overdue,
+    )
+    paying = _insert_instance(
+        db,
+        paid_bill,
+        period=period,
+        due_date=today + timedelta(days=2),
+        amount="640.00",
+    )
+    _insert_instance(
+        db,
+        eur_bill,
+        period=period,
+        due_date=today + timedelta(days=1),
+        amount="999.00",
+    )
+
+    # Partial payment counts only the remaining balance; full payment drops out
+    _pay(client, token, week.id, "5.00", paid_on=today.isoformat())
+    _pay(client, token, paying.id, "640.00", paid_on=today.isoformat())
+
+    data = _overview(client, token)
+
+    # Rolling 7 days from today: today (10.00) + week bill remaining (15.00)
+    assert data["upcoming_7d"]["count"] == 2
+    assert _dec(data["upcoming_7d"]["total"]) == Decimal("25.00")
+
+    # Rolling 30 days adds the +8 (40.00) and +30 (80.00) bills
+    assert data["upcoming_30d"]["count"] == 4
+    assert _dec(data["upcoming_30d"]["total"]) == Decimal("145.00")
+
+
 def test_attention_limit_and_ordering(client_db):
     client, db = client_db
     token = register_and_login(client, "stats_attention_limit@test.com")

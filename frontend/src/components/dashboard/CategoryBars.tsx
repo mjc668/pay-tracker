@@ -10,6 +10,8 @@ interface Props {
   currency: string;
 }
 
+const MAX_ROWS = 5;
+
 function parseAmount(value: string): number {
   const parsed = parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -42,8 +44,10 @@ export default function CategoryBars({ categories, currency }: Props) {
     );
   });
 
+  const visible = sorted.slice(0, MAX_ROWS);
+
   const scale = Math.max(
-    ...sorted.map((item) =>
+    ...visible.map((item) =>
       Math.max(parseAmount(item.paid_total), parseAmount(item.due_total)),
     ),
     0,
@@ -51,7 +55,7 @@ export default function CategoryBars({ categories, currency }: Props) {
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      {sorted.map((item, index) => {
+      {visible.map((item, index) => {
         const paid = parseAmount(item.paid_total);
         const due = parseAmount(item.due_total);
         const paidPct = scale > 0 ? (paid / scale) * 100 : 0;

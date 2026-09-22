@@ -13,6 +13,11 @@ export interface StatsSummary {
   overdue_total: string;
 }
 
+export interface UpcomingWindow {
+  count: number;
+  total: string;
+}
+
 export interface TrendPoint {
   period: string;
   paid_total: string;
@@ -49,6 +54,8 @@ export interface StatsOverview {
   summary: StatsSummary;
   trend: TrendPoint[];
   forecast: ForecastPoint[];
+  upcoming_7d: UpcomingWindow;
+  upcoming_30d: UpcomingWindow;
   by_category: CategoryStat[];
   attention: AttentionItem[];
 }

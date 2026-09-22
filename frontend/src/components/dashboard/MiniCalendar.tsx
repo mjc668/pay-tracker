@@ -64,11 +64,8 @@ export default function MiniCalendar({ month, instances, todayStr }: Props) {
       aria-label={t("miniCalendarLinkLabel", { month: capitalizedMonthLabel })}
       className="block rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-green-300 hover:bg-green-50/50 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/10"
     >
-      <div className="mb-2 flex items-baseline justify-between gap-2">
+      <div className="mb-2">
         <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-          {t("miniCalendarTitle")}
-        </span>
-        <span className="truncate text-xs text-slate-400 dark:text-slate-500">
           {capitalizedMonthLabel}
         </span>
       </div>

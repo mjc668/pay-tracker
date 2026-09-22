@@ -28,6 +28,7 @@ from app.schemas.stats import (
     StatsOverviewOut,
     StatsSummary,
     TrendPoint,
+    UpcomingWindow,
 )
 from app.services.categories import category_label
 from app.services.recurrence import _occurrences_in_period
@@ -318,6 +319,36 @@ def _attention(
     return items
 
 
+def _upcoming_window(
+    db: Session, user_id: int, currency: str, today: date, days: int
+) -> UpcomingWindow:
+    """Unpaid primary-currency instances due in the next `days` days.
+
+    Rolling from today (not calendar months); partial payments count with
+    their remaining balance. Overdue instances are excluded.
+    """
+    remaining = PaymentInstance.amount - func.coalesce(PaymentInstance.paid_amount, 0)
+    row = (
+        db.query(
+            func.count(PaymentInstance.id),
+            func.coalesce(func.sum(func.greatest(remaining, 0)), 0),
+        )
+        .select_from(PaymentInstance)
+        .join(BillTemplate, PaymentInstance.bill_id == BillTemplate.id)
+        .filter(
+            BillTemplate.user_id == user_id,
+            BillTemplate.currency == currency,
+            PaymentInstance.is_deleted.is_(False),
+            PaymentInstance.status != PaymentStatus.paid,
+            remaining > 0,
+            PaymentInstance.due_date >= today,
+            PaymentInstance.due_date <= today + timedelta(days=days),
+        )
+        .one()
+    )
+    return UpcomingWindow(count=int(row[0]), total=Decimal(row[1]))
+
+
 def build_stats_overview(
     db: Session, user: User, month: str, months: int
 ) -> StatsOverviewOut:
@@ -333,6 +364,8 @@ def build_stats_overview(
         summary=_summary(db, user.id, currency, month, today),
         trend=_trend(db, user.id, currency, periods),
         forecast=_forecast(db, user.id, currency, month),
+        upcoming_7d=_upcoming_window(db, user.id, currency, today, 7),
+        upcoming_30d=_upcoming_window(db, user.id, currency, today, 30),
         by_category=_by_category(
             db, user.id, currency, periods, user.language_preference
         ),
