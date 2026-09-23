@@ -166,10 +166,10 @@ export default function DashboardPage() {
               {monthLabel}
             </h2>
             <SummaryCards
-              summary={stats.summary}
               upcoming7d={stats.upcoming_7d}
               upcoming30d={stats.upcoming_30d}
               paid30d={stats.paid_30d}
+              overdue={stats.overdue}
               currency={stats.currency}
             />
           </section>

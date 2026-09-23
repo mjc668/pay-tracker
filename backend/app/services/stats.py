@@ -25,6 +25,7 @@ from app.schemas.stats import (
     AttentionItem,
     CategoryStat,
     ForecastPoint,
+    OverdueSummary,
     PaidWindow,
     StatsOverviewOut,
     StatsSummary,
@@ -383,6 +384,34 @@ def _paid_window(db: Session, user_id: int, currency: str, today: date) -> PaidW
     return PaidWindow(paid_total=Decimal(paid or 0), due_total=Decimal(due or 0))
 
 
+def _overdue_summary(
+    db: Session, user_id: int, currency: str, today: date
+) -> OverdueSummary:
+    """All unpaid overdue instances in any period, by remaining balance.
+
+    Matches the payments list's Overdue section (which carries rows over from
+    earlier periods), so the dashboard swatch and the list agree.
+    """
+    remaining = PaymentInstance.amount - func.coalesce(PaymentInstance.paid_amount, 0)
+    row = (
+        db.query(
+            func.count(PaymentInstance.id),
+            func.coalesce(func.sum(func.greatest(remaining, 0)), 0),
+        )
+        .select_from(PaymentInstance)
+        .join(BillTemplate, PaymentInstance.bill_id == BillTemplate.id)
+        .filter(
+            BillTemplate.user_id == user_id,
+            BillTemplate.currency == currency,
+            PaymentInstance.is_deleted.is_(False),
+            PaymentInstance.status != PaymentStatus.paid,
+            PaymentInstance.due_date < today,
+        )
+        .one()
+    )
+    return OverdueSummary(count=int(row[0]), total=Decimal(row[1]))
+
+
 def build_stats_overview(
     db: Session, user: User, month: str, months: int
 ) -> StatsOverviewOut:
@@ -401,6 +430,7 @@ def build_stats_overview(
         upcoming_7d=_upcoming_window(db, user.id, currency, today, 7),
         upcoming_30d=_upcoming_window(db, user.id, currency, today, 30),
         paid_30d=_paid_window(db, user.id, currency, today),
+        overdue=_overdue_summary(db, user.id, currency, today),
         by_category=_by_category(
             db, user.id, currency, periods, user.language_preference
         ),

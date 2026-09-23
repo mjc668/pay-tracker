@@ -91,6 +91,10 @@ function PaymentsPageInner() {
   const tRow = useTranslations("PaymentRow");
   const tRoot = useTranslations();
   const locale = useLocale();
+  const amountFormatter = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -197,16 +201,31 @@ function PaymentsPageInner() {
   });
 
   // Urgency-first list: overdue, then upcoming, then paid — each by due date.
-  const sections = SECTION_KEYS.map((key) => ({
-    key,
-    items: filteredInstances
+  // Totals use the remaining balance (or the paid amount for the Paid section)
+  // and are grouped per currency since bills can differ.
+  const sections = SECTION_KEYS.map((key) => {
+    const items = filteredInstances
       .filter((inst) => inst.status === key)
       .sort(
         (a, b) =>
           a.due_date.localeCompare(b.due_date) ||
           a.bill_name.localeCompare(b.bill_name),
-      ),
-  })).filter((section) => section.items.length > 0);
+      );
+    const totals = new Map<string, number>();
+    for (const inst of items) {
+      const amount = parseFloat(inst.amount) || 0;
+      const paid =
+        inst.paid_amount != null ? parseFloat(inst.paid_amount) || 0 : 0;
+      const value =
+        key === "paid"
+          ? inst.paid_amount != null
+            ? paid
+            : amount
+          : Math.max(amount - paid, 0);
+      totals.set(inst.currency, (totals.get(inst.currency) ?? 0) + value);
+    }
+    return { key, items, totals };
+  }).filter((section) => section.items.length > 0);
 
   // The calendar stays month-scoped even when the list includes overdue items
   // carried over from earlier periods.
@@ -498,7 +517,7 @@ function PaymentsPageInner() {
       {/* Payment list */}
       {!loading && !loadError && view === "list" && filteredInstances.length > 0 && (
         <div className="flex flex-col gap-4">
-          {sections.map(({ key, items }) => (
+          {sections.map(({ key, items, totals }) => (
             <div key={key} data-testid={`payment-section-${key}`}>
               <button
                 onClick={() => toggle(key)}
@@ -517,6 +536,14 @@ function PaymentsPageInner() {
                 </span>
                 <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
                   {items.length}
+                </span>
+                <span className="shrink-0 text-xs font-medium tabular-nums text-slate-400 dark:text-slate-500">
+                  {[...totals]
+                    .map(
+                      ([cur, value]) =>
+                        `${amountFormatter.format(value)} ${cur}`,
+                    )
+                    .join(" · ")}
                 </span>
                 <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700/60" />
               </button>

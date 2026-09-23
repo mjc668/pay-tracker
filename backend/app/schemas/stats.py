@@ -43,6 +43,13 @@ class UpcomingWindow(BaseModel):
     total: Decimal
 
 
+class OverdueSummary(BaseModel):
+    """Every unpaid overdue instance, regardless of period."""
+
+    count: int
+    total: Decimal
+
+
 class PaidWindow(BaseModel):
     """Rolling window ending today: paid vs due over the last 30 days."""
 
@@ -78,5 +85,6 @@ class StatsOverviewOut(BaseModel):
     upcoming_7d: UpcomingWindow
     upcoming_30d: UpcomingWindow
     paid_30d: PaidWindow
+    overdue: OverdueSummary
     by_category: list[CategoryStat]
     attention: list[AttentionItem]

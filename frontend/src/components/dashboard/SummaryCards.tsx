@@ -2,13 +2,17 @@
 
 import { AlertCircle, CalendarClock, CalendarRange, CheckCircle2 } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
-import type { PaidWindow, StatsSummary, UpcomingWindow } from "@/lib/stats-api";
+import type {
+  OverdueSummary,
+  PaidWindow,
+  UpcomingWindow,
+} from "@/lib/stats-api";
 
 interface Props {
-  summary: StatsSummary;
   upcoming7d: UpcomingWindow;
   upcoming30d: UpcomingWindow;
   paid30d: PaidWindow;
+  overdue: OverdueSummary;
   currency: string;
 }
 
@@ -28,10 +32,10 @@ function parseAmount(value: string): number {
 }
 
 export default function SummaryCards({
-  summary,
   upcoming7d,
   upcoming30d,
   paid30d,
+  overdue,
   currency,
 }: Props) {
   const t = useTranslations("Dashboard");
@@ -51,8 +55,8 @@ export default function SummaryCards({
     {
       key: "overdue",
       label: t("cardOverdue"),
-      amount: summary.overdue_total,
-      count: summary.overdue_count,
+      amount: overdue.total,
+      count: overdue.count,
       accent: "border-l-red-400 dark:border-l-red-500",
       iconClass: "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400",
       Icon: AlertCircle,

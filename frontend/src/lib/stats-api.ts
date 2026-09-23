@@ -2,6 +2,11 @@ import { apiFetch } from "./api";
 import type { Category } from "./categories-api";
 import type { PaymentStatus } from "./payments-api";
 
+export interface OverdueSummary {
+  count: number;
+  total: string;
+}
+
 export interface PaidWindow {
   paid_total: string;
   due_total: string;
@@ -62,6 +67,7 @@ export interface StatsOverview {
   upcoming_7d: UpcomingWindow;
   upcoming_30d: UpcomingWindow;
   paid_30d: PaidWindow;
+  overdue: OverdueSummary;
   by_category: CategoryStat[];
   attention: AttentionItem[];
 }

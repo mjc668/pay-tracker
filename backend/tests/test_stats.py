@@ -789,6 +789,57 @@ def test_paid_window_is_rolling_30_days(client_db):
     assert _dec(window["due_total"]) == Decimal("30.00")
 
 
+def test_overdue_summary_spans_periods_and_uses_remaining(client_db):
+    client, db = client_db
+    token = register_and_login(client, "stats_overdue_all@test.com")
+    today = date.today()
+    current = today.strftime("%Y-%m")
+    previous = _shift(current, -1)
+
+    current_bill = _create_bill(client, token, {"name": "Current overdue"})
+    previous_bill = _create_bill(client, token, {"name": "Previous overdue"})
+    paid_bill = _create_bill(client, token, {"name": "Paid"})
+    upcoming_bill = _create_bill(client, token, {"name": "Upcoming"})
+
+    _insert_instance(
+        db,
+        current_bill,
+        period=current,
+        due_date=today - timedelta(days=3),
+        amount="100.00",
+    )
+    prev = _insert_instance(
+        db,
+        previous_bill,
+        period=previous,
+        due_date=today - timedelta(days=33),
+        amount="200.00",
+    )
+    _insert_instance(
+        db,
+        paid_bill,
+        period=previous,
+        due_date=today - timedelta(days=10),
+        amount="400.00",
+        status=PaymentStatus.paid,
+        paid_amount="400.00",
+    )
+    _insert_instance(
+        db,
+        upcoming_bill,
+        period=current,
+        due_date=today + timedelta(days=5),
+        amount="800.00",
+    )
+
+    # A partial payment leaves a remaining balance on the earlier row
+    _pay(client, token, prev.id, "50.00", paid_on=today.isoformat())
+
+    overdue = _overview(client, token)["overdue"]
+    assert overdue["count"] == 2
+    assert _dec(overdue["total"]) == Decimal("250.00")
+
+
 def test_attention_limit_and_ordering(client_db):
     client, db = client_db
     token = register_and_login(client, "stats_attention_limit@test.com")
