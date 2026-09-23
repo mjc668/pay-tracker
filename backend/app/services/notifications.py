@@ -48,11 +48,14 @@ def send_via_apprise(
     else:
         url = f"{base_url}/notify"
         payload = {
-            "urls": settings.apprise_urls,
             "title": title,
             "body": body,
             "type": notify_type,
         }
+        # Omit `urls` when unset so the gateway falls back to its own
+        # APPRISE_STATELESS_URLS configuration.
+        if settings.apprise_urls:
+            payload["urls"] = settings.apprise_urls
 
     try:
         response = httpx.post(
@@ -63,7 +66,11 @@ def send_via_apprise(
 
     if response.is_success:
         return DeliveryResult(ok=True, channel=NotificationChannel.apprise)
-    return DeliveryResult(ok=False, error=f"apprise HTTP {response.status_code}")
+    snippet = " ".join(response.text.split())[:300]
+    detail = f"apprise HTTP {response.status_code}"
+    if snippet:
+        detail = f"{detail}: {snippet}"
+    return DeliveryResult(ok=False, error=detail)
 
 
 def deliver(

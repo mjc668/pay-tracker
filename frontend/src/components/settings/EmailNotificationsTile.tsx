@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, BarChart2, Loader2, Mail, Send } from "lucide-react";
+import { AlertTriangle, BarChart2, ChevronRight, HelpCircle, Loader2, Mail, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
@@ -424,6 +424,46 @@ export function EmailNotificationsTile({
           </p>
         )}
       </div>
+
+      <details className="group pt-1 border-t border-slate-100 dark:border-slate-700">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+          <HelpCircle size={15} className="shrink-0 text-slate-400 dark:text-slate-500" />
+          {tp("emailNotifications.setupTitle")}
+          <ChevronRight
+            size={14}
+            className="ml-auto shrink-0 text-slate-400 transition-transform group-open:rotate-90 dark:text-slate-500"
+          />
+        </summary>
+        <div className="mt-2 flex flex-col gap-2 text-sm text-slate-500 dark:text-slate-400">
+          <p>{tp("emailNotifications.setupAppriseIntro")}</p>
+          <p>{tp("emailNotifications.setupGatewayNote")}</p>
+          <p className="font-medium text-slate-600 dark:text-slate-300">
+            {tp("emailNotifications.setupMinimalLabel")}
+          </p>
+          <pre className="overflow-x-auto rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+{`services:
+  apprise:
+    image: caronc/apprise:latest
+    restart: unless-stopped
+    ports: ["8000:8000"]
+    volumes: ["./apprise/config:/config"]`}
+          </pre>
+          <pre className="overflow-x-auto rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+{`APPRISE_BASE_URL=http://10.112.200.5:8000`}
+          </pre>
+          <p className="font-medium text-slate-600 dark:text-slate-300">
+            {tp("emailNotifications.setupOptionalLabel")}
+          </p>
+          <pre className="overflow-x-auto rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+{`# saved configuration inside the gateway
+APPRISE_KEY=paytracker
+# or pass targets per request (space/comma separated)
+APPRISE_URLS="ntfy://topic discord://webhook_id/webhook_token"`}
+          </pre>
+          <p>{tp("emailNotifications.setupReachability")}</p>
+          <p>{tp("emailNotifications.setupSmtpLegacy")}</p>
+        </div>
+      </details>
 
       {serverTime && (
         <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">

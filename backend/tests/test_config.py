@@ -41,9 +41,9 @@ def test_apprise_base_url_trailing_slashes_are_stripped():
     assert s.apprise_base_url == "http://10.112.200.5:8000"
 
 
-def test_apprise_configured_requires_base_url_and_target():
+def test_apprise_configured_needs_only_a_base_url():
     assert Settings(apprise_base_url=None).apprise_configured is False
-    assert Settings(apprise_base_url="http://x").apprise_configured is False
+    assert Settings(apprise_base_url="http://x").apprise_configured is True
     assert (
         Settings(
             apprise_base_url="http://x", apprise_urls="ntfy://topic"

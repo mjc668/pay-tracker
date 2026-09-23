@@ -85,9 +85,11 @@ The household self-hosted Pay Tracker on a Hetzner CX22 in 2026. Eight months la
 
 Reminders and the monthly summary are delivered through the first configured channel:
 
-1. **Apprise** — preferred when `APPRISE_BASE_URL` plus `APPRISE_KEY` or `APPRISE_URLS` are set.
-2. **SMTP email** — fallback (and the only channel when Apprise is not configured).
+1. **Apprise** — preferred whenever `APPRISE_BASE_URL` is set. The gateway may hold its own targets (its `APPRISE_STATELESS_URLS` or a saved config key) — `APPRISE_URLS` and `APPRISE_KEY` are optional request-level overrides.
+2. **SMTP email** — optional legacy fallback, used when Apprise is not configured or fails. Password reset still requires SMTP; without it the "Forgot password" link is hidden.
 3. Neither configured — the scheduler logs a warning and skips; the "send now" endpoints return `400 No notification channel configured`.
+
+Note: `unraid/apprise-go` is a CLI-only port with no HTTP server — run `caronc/apprise` or `lscr.io/linuxserver/apprise-api` as the gateway, or wrap the Go CLI yourself.
 
 | Env var | Default | Meaning |
 |---|---|---|

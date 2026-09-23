@@ -72,9 +72,9 @@ class Settings(BaseSettings):
 
     @property
     def apprise_configured(self) -> bool:
-        return bool(self.apprise_base_url) and bool(
-            self.apprise_key or self.apprise_urls
-        )
+        # The gateway base URL alone is enough: the container may hold the
+        # targets itself (its own APPRISE_STATELESS_URLS or saved config key).
+        return bool(self.apprise_base_url)
 
     @field_validator("apprise_base_url")
     @classmethod

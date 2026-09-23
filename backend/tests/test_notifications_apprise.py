@@ -108,6 +108,39 @@ def test_send_via_apprise_key_payload_omits_urls():
     assert payload["type"] == "info"
 
 
+def test_send_via_apprise_base_url_only_uses_gateway_config():
+    """A gateway that holds its own targets needs only APPRISE_BASE_URL."""
+    with (
+        _channels(apprise_base_url=_APPRISE_BASE),
+        patch(
+            "app.services.notifications.httpx.post",
+            return_value=httpx.Response(200),
+        ) as mock_post,
+    ):
+        result = send_via_apprise(title="T", body="B")
+
+    assert result.ok is True
+    assert mock_post.call_args.args[0] == f"{_APPRISE_BASE}/notify"
+    payload = mock_post.call_args.kwargs["json"]
+    assert "urls" not in payload
+
+
+def test_send_via_apprise_error_includes_response_snippet():
+    with (
+        _channels(apprise_base_url=_APPRISE_BASE, apprise_urls=_APPRISE_URLS),
+        patch(
+            "app.services.notifications.httpx.post",
+            return_value=httpx.Response(424, text="Failed to send to ntfy://topic"),
+        ),
+    ):
+        result = send_via_apprise(title="T", body="B")
+
+    assert result.ok is False
+    assert result.error is not None
+    assert "424" in result.error
+    assert "ntfy://topic" in result.error
+
+
 def test_send_via_apprise_not_configured_does_not_call_httpx():
     with (
         _channels(),

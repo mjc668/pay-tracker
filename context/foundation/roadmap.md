@@ -421,3 +421,13 @@ Shipped after the planned slices completed. Each maps to an archived change fold
 | v2.1.1 | payments-order | Payments list ordered Overdue → Upcoming → Paid instead of by category | — |
 | v2.1.2 | one-off-fix | One-off bills generate their single instance; past-dated one-offs show as overdue | — |
 | v2.2.0 | dashboard-rework | Rolling-window swatches (7 days / 30 days / paid progress) and a bills-vs-payments grouped-bar chart; HTTPS/PWA deployment guide | — |
+
+## Next up
+
+Operational follow-ups (not code slices):
+
+- **Install apprise-go, configure it, and connect it to Pay Tracker.**
+  1. **Install** apprise-go on the host (container or binary). It is CLI-only with no HTTP server, so it needs a small HTTP wrapper for Pay Tracker to call — or run `caronc/apprise` / `lscr.io/linuxserver/apprise-api` as the gateway instead.
+  2. **Configure** the notification targets (Discord / ntfy / Gotify / email, etc.) in the gateway (its config file, storage, or `APPRISE_STATELESS_URLS`).
+  3. **Connect** Pay Tracker: set `APPRISE_BASE_URL` in the backend `.env` (optionally `APPRISE_KEY` for a saved config, `APPRISE_URLS` for per-request targets, `APPRISE_TIMEOUT_SECONDS`), redeploy, then Settings → Notifications → "Send test notification". See `.env.example` and `infrastructure.md` § Notification channels.
+  - SMTP is optional legacy: reminders fall back to email only when it is configured; password reset still requires it.
