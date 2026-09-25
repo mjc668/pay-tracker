@@ -438,6 +438,9 @@ def test_patch_lowering_cap_prunes_future_unpaid(client_db):
     plus3 = _insert_instance(
         db, bill_id, _shift_period(current, 3), _day15(_shift_period(current, 3))
     )
+    # Capture PKs before the PATCH: the request deletes rows in another
+    # session, and touching an expired instance afterwards raises.
+    plus1_id, plus2_id, plus3_id = plus1.id, plus2.id, plus3.id
 
     # Cap 2 allows indices 0 (current month) and 1 (+1 month).
     r = client.patch(
@@ -446,9 +449,9 @@ def test_patch_lowering_cap_prunes_future_unpaid(client_db):
     assert r.status_code == 200, r.text
     assert r.json()["max_occurrences"] == 2
 
-    assert _instance_exists(db, plus1.id)
-    assert not _instance_exists(db, plus2.id)
-    assert not _instance_exists(db, plus3.id)
+    assert _instance_exists(db, plus1_id)
+    assert not _instance_exists(db, plus2_id)
+    assert not _instance_exists(db, plus3_id)
 
 
 def test_patch_lowering_cap_keeps_paid_partial_and_tombstones(client_db):
@@ -477,6 +480,12 @@ def test_patch_lowering_cap_keeps_paid_partial_and_tombstones(client_db):
     plain = _insert_instance(
         db, bill_id, _shift_period(current, 5), _day15(_shift_period(current, 5))
     )
+    paid_id, partial_id, tombstone_id, plain_id = (
+        paid.id,
+        partial.id,
+        tombstone.id,
+        plain.id,
+    )
 
     r = client.post(
         f"/bills/payments/{partial.id}/payments",
@@ -490,10 +499,10 @@ def test_patch_lowering_cap_keeps_paid_partial_and_tombstones(client_db):
     )
     assert r.status_code == 200, r.text
 
-    assert _instance_exists(db, paid.id)
-    assert _instance_exists(db, partial.id)
-    assert _instance_exists(db, tombstone.id)
-    assert not _instance_exists(db, plain.id)
+    assert _instance_exists(db, paid_id)
+    assert _instance_exists(db, partial_id)
+    assert _instance_exists(db, tombstone_id)
+    assert not _instance_exists(db, plain_id)
 
 
 def test_patch_raising_cap_does_not_prune(client_db):
@@ -504,13 +513,14 @@ def test_patch_raising_cap_does_not_prune(client_db):
     beyond = _insert_instance(
         db, bill_id, _shift_period(current, 2), _day15(_shift_period(current, 2))
     )
+    beyond_id = beyond.id
 
     r = client.patch(
         f"/bills/{bill_id}", json={"max_occurrences": 5}, headers=auth(token)
     )
     assert r.status_code == 200, r.text
 
-    assert _instance_exists(db, beyond.id)
+    assert _instance_exists(db, beyond_id)
 
 
 def test_patch_clearing_cap_does_not_prune(client_db):
@@ -521,6 +531,7 @@ def test_patch_clearing_cap_does_not_prune(client_db):
     beyond = _insert_instance(
         db, bill_id, _shift_period(current, 2), _day15(_shift_period(current, 2))
     )
+    beyond_id = beyond.id
 
     r = client.patch(
         f"/bills/{bill_id}", json={"max_occurrences": None}, headers=auth(token)
@@ -528,7 +539,7 @@ def test_patch_clearing_cap_does_not_prune(client_db):
     assert r.status_code == 200, r.text
     assert r.json()["max_occurrences"] is None
 
-    assert _instance_exists(db, beyond.id)
+    assert _instance_exists(db, beyond_id)
 
 
 def test_patch_one_off_forces_max_occurrences_null(client_db):
