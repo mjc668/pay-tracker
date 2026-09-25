@@ -390,8 +390,13 @@ def test_weekly_generation_stops_at_cap(client_db):
         if (start + timedelta(days=7 * k)).strftime("%Y-%m") in target_periods
     }
     assert r.json()["created"] == len(expected)
-    assert _periods_in_db(db, bill_id) == {due.strftime("%Y-%m") for due in expected}
-    assert {
+    all_dues = {
         row.due_date
         for row in db.query(PaymentInstance).filter(PaymentInstance.bill_id == bill_id)
+    }
+    # The create-time backfill already materialized the current-month steps,
+    # so the table holds exactly the first eight 7-day occurrences.
+    assert all_dues == {start + timedelta(days=7 * k) for k in range(8)}
+    assert {
+        due for due in all_dues if due.strftime("%Y-%m") in target_periods
     } == expected

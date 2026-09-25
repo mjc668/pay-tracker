@@ -28,6 +28,14 @@ def _create_bill(client: TestClient, token: str, overrides: dict | None = None) 
     return r.json()["id"]
 
 
+def _instance_exists(db, instance_id: int) -> bool:
+    """Query-based existence check: Session.get on a deleted identity-mapped
+    row raises ObjectDeletedError in the test session."""
+    return (
+        db.query(PaymentInstance).filter(PaymentInstance.id == instance_id).count() > 0
+    )
+
+
 def _insert_instance(
     db,
     bill_id: int,
@@ -438,10 +446,9 @@ def test_patch_lowering_cap_prunes_future_unpaid(client_db):
     assert r.status_code == 200, r.text
     assert r.json()["max_occurrences"] == 2
 
-    db.expire_all()
-    assert db.get(PaymentInstance, plus1.id) is not None
-    assert db.get(PaymentInstance, plus2.id) is None
-    assert db.get(PaymentInstance, plus3.id) is None
+    assert _instance_exists(db, plus1.id)
+    assert not _instance_exists(db, plus2.id)
+    assert not _instance_exists(db, plus3.id)
 
 
 def test_patch_lowering_cap_keeps_paid_partial_and_tombstones(client_db):
@@ -483,11 +490,10 @@ def test_patch_lowering_cap_keeps_paid_partial_and_tombstones(client_db):
     )
     assert r.status_code == 200, r.text
 
-    db.expire_all()
-    assert db.get(PaymentInstance, paid.id) is not None
-    assert db.get(PaymentInstance, partial.id) is not None
-    assert db.get(PaymentInstance, tombstone.id) is not None
-    assert db.get(PaymentInstance, plain.id) is None
+    assert _instance_exists(db, paid.id)
+    assert _instance_exists(db, partial.id)
+    assert _instance_exists(db, tombstone.id)
+    assert not _instance_exists(db, plain.id)
 
 
 def test_patch_raising_cap_does_not_prune(client_db):
@@ -504,8 +510,7 @@ def test_patch_raising_cap_does_not_prune(client_db):
     )
     assert r.status_code == 200, r.text
 
-    db.expire_all()
-    assert db.get(PaymentInstance, beyond.id) is not None
+    assert _instance_exists(db, beyond.id)
 
 
 def test_patch_clearing_cap_does_not_prune(client_db):
@@ -523,8 +528,7 @@ def test_patch_clearing_cap_does_not_prune(client_db):
     assert r.status_code == 200, r.text
     assert r.json()["max_occurrences"] is None
 
-    db.expire_all()
-    assert db.get(PaymentInstance, beyond.id) is not None
+    assert _instance_exists(db, beyond.id)
 
 
 def test_patch_one_off_forces_max_occurrences_null(client_db):
