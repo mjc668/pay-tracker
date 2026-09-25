@@ -8,7 +8,7 @@
  *                  Payments API (GET /bills/payments), client-side render.
  */
 import { test, expect } from '@playwright/test';
-import { loginNewUser } from './helpers';
+import { API, loginNewUser } from './helpers';
 
 /** UTC month key ("YYYY-MM") offset by `offset` months from the current one. */
 function monthKeyFromUtcOffset(offset: number): string {
@@ -62,8 +62,16 @@ test('monthly bill capped at 4 payments stops after month +3', async ({ page }) 
   await page.goto(`/dashboard/payments?month=${monthPlus3}`);
   await expect(page.getByText(billName).first()).toBeVisible();
 
-  // Assert: ... but the fifth (month +4) was never generated
-  await page.goto(`/dashboard/payments?month=${monthPlus4}`);
-  await expect(page.getByText('No bills for this month')).toBeVisible();
-  await expect(page.getByText(billName)).toHaveCount(0);
+  // Assert: ... but the fifth (month +4) was never generated. Check through
+  // the API so overdue rows carried over from earlier periods can't mask it.
+  const monthPlus4Res = await page.request.get(
+    `${API}/bills/payments?month=${monthPlus4}&include_overdue=false`,
+  );
+  expect(monthPlus4Res.ok()).toBeTruthy();
+  const monthPlus4Rows = (await monthPlus4Res.json()) as Array<{
+    bill_name: string;
+  }>;
+  expect(
+    monthPlus4Rows.filter((row) => row.bill_name === billName),
+  ).toHaveLength(0);
 });

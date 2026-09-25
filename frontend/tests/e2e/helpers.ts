@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import type { Page } from '@playwright/test';
 
-const API = process.env.E2E_API_URL ?? 'http://localhost:8010';
+export const API = process.env.E2E_API_URL ?? 'http://localhost:8010';
 const E2E_USERS_FILE = '/tmp/e2e-users.json';
 
 /**

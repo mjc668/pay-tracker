@@ -413,21 +413,19 @@ function PaymentsPageInner() {
             </span>
           )}
         </div>
-        {!loading && !loadError && (
+        {!loading && !loadError && instances.length > 0 && (
           <div className="mt-0.5 flex items-center justify-between gap-3">
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {instances.length === 0
-                ? t("noPayments")
-                : [
-                    instances.filter((i) => i.status === "upcoming").length > 0 &&
-                      `${instances.filter((i) => i.status === "upcoming").length} ${tRow("status.upcoming").toLowerCase()}`,
-                    instances.filter((i) => i.status === "overdue").length > 0 &&
-                      `${instances.filter((i) => i.status === "overdue").length} ${tRow("status.overdue").toLowerCase()}`,
-                    instances.filter((i) => i.status === "paid").length > 0 &&
-                      `${instances.filter((i) => i.status === "paid").length} ${tRow("status.paid").toLowerCase()}`,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
+              {[
+                instances.filter((i) => i.status === "upcoming").length > 0 &&
+                  `${instances.filter((i) => i.status === "upcoming").length} ${tRow("status.upcoming").toLowerCase()}`,
+                instances.filter((i) => i.status === "overdue").length > 0 &&
+                  `${instances.filter((i) => i.status === "overdue").length} ${tRow("status.overdue").toLowerCase()}`,
+                instances.filter((i) => i.status === "paid").length > 0 &&
+                  `${instances.filter((i) => i.status === "paid").length} ${tRow("status.paid").toLowerCase()}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
             {sections.length > 1 && (
               <button
