@@ -26,6 +26,17 @@ const LEGACY_INTERVALS: Record<string, number> = {
   quarterly: 3,
 };
 
+const DEFAULT_MAX_OCCURRENCES = 12;
+const MAX_OCCURRENCES_LIMIT = 999;
+
+function parseMaxOccurrences(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_OCCURRENCES_LIMIT) return null;
+  return parsed;
+}
+
 function clampInterval(frequency: BillFrequency, value: number): number {
   if (frequency === "one_off") return 1;
   if (!Number.isFinite(value) || value < 1) return 1;
@@ -65,6 +76,7 @@ interface Errors {
   amount?: string;
   start_date?: string;
   category?: string;
+  max_occurrences?: string;
 }
 
 const inputClass =
@@ -99,6 +111,12 @@ export default function BillTemplateForm({
       initial?.interval_count ?? legacyInterval ?? 1,
     );
   });
+  const [limitedPayments, setLimitedPayments] = useState(initial?.max_occurrences != null);
+  const [maxOccurrences, setMaxOccurrences] = useState(
+    initial?.max_occurrences != null
+      ? String(initial.max_occurrences)
+      : String(DEFAULT_MAX_OCCURRENCES),
+  );
   const [startDate, setStartDate] = useState(initial?.start_date ?? todayIso());
   const [amount, setAmount] = useState(initial?.amount ?? "");
   const initialCurrency =
@@ -127,6 +145,8 @@ export default function BillTemplateForm({
     category: Category | null;
     frequency: BillFrequency;
     startDate: string;
+    limitedPayments: boolean;
+    maxOccurrences: string;
   }): Errors {
     const e: Errors = {};
     if (!fields.name.trim()) e.name = t("nameRequired");
@@ -135,6 +155,12 @@ export default function BillTemplateForm({
     if (!fields.category) e.category = t("categoryRequired");
     if (fields.frequency === "weekly" && !fields.startDate)
       e.start_date = t("startDateRequired");
+    if (
+      fields.frequency !== "one_off" &&
+      fields.limitedPayments &&
+      parseMaxOccurrences(fields.maxOccurrences) === null
+    )
+      e.max_occurrences = t("maxOccurrencesInvalid");
     return e;
   }
 
@@ -145,10 +171,23 @@ export default function BillTemplateForm({
       category: Category | null;
       frequency: BillFrequency;
       startDate: string;
+      limitedPayments: boolean;
+      maxOccurrences: string;
     }>,
   ) {
     if (submitAttempted) {
-      setErrors(validate({ name, amount, category, frequency, startDate, ...overrides }));
+      setErrors(
+        validate({
+          name,
+          amount,
+          category,
+          frequency,
+          startDate,
+          limitedPayments,
+          maxOccurrences,
+          ...overrides,
+        }),
+      );
     }
   }
 
@@ -167,11 +206,27 @@ export default function BillTemplateForm({
     setStartDate(v);
     revalidate({ startDate: v });
   }
+  function handleLimitedPaymentsChange(checked: boolean) {
+    setLimitedPayments(checked);
+    revalidate({ limitedPayments: checked });
+  }
+  function handleMaxOccurrencesChange(v: string) {
+    setMaxOccurrences(v);
+    revalidate({ maxOccurrences: v });
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitAttempted(true);
-    const errs = validate({ name, amount, category, frequency, startDate });
+    const errs = validate({
+      name,
+      amount,
+      category,
+      frequency,
+      startDate,
+      limitedPayments,
+      maxOccurrences,
+    });
     setErrors(errs);
     if (Object.keys(errs).length > 0 || category === null) return;
 
@@ -186,6 +241,10 @@ export default function BillTemplateForm({
         category_id: category.id,
         frequency,
         interval_count: frequency === "one_off" ? 1 : intervalCount,
+        max_occurrences:
+          frequency === "one_off" || !limitedPayments
+            ? null
+            : parseMaxOccurrences(maxOccurrences),
         start_date: isWeekly ? startDate : null,
         amount: amount.trim() || "0",
         currency: resolvedCurrency || "EUR",
@@ -304,6 +363,39 @@ export default function BillTemplateForm({
             </>
           )}
         </div>
+
+        {frequency !== "one_off" && (
+          <div className="mt-3">
+            <label className="flex cursor-pointer items-center gap-2.5 text-sm text-slate-600 dark:text-slate-400">
+              <input
+                type="checkbox"
+                checked={limitedPayments}
+                onChange={(e) => handleLimitedPaymentsChange(e.target.checked)}
+                className="h-4 w-4 rounded accent-green-700"
+              />
+              {t("setNumberOfPayments")}
+            </label>
+            {limitedPayments && (
+              <div className="mt-2 max-w-[12rem]">
+                <label htmlFor="bill-max-occurrences" className={labelClass}>
+                  {t("numberOfPaymentsLabel")}
+                </label>
+                <input
+                  id="bill-max-occurrences"
+                  type="number"
+                  min={1}
+                  max={MAX_OCCURRENCES_LIMIT}
+                  value={maxOccurrences}
+                  onChange={(e) => handleMaxOccurrencesChange(e.target.value)}
+                  className={inputClass}
+                />
+                {errors.max_occurrences && (
+                  <p className="mt-1 text-xs text-red-500">{errors.max_occurrences}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Row 3: Date picker — weekly uses a native date input, others the calendar */}

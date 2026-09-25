@@ -163,6 +163,9 @@
             "monthly": "{count, plural, one {miesiąc} few {miesiące} many {miesięcy} other {miesiąca}}",
             "annual": "{count, plural, one {rok} few {lata} many {lat} other {lata}}"
         },
+        "setNumberOfPayments": "Ustaw liczbę płatności",
+        "numberOfPaymentsLabel": "Liczba płatności",
+        "maxOccurrencesInvalid": "Podaj liczbę płatności od 1 do 999.",
         "dueDateLabel": "Termin płatności",
         "startDateLabel": "Miesiąc i dzień rozpoczęcia",
         "firstPaymentDateLabel": "Data pierwszej płatności",
@@ -210,7 +213,8 @@
         "weekly": "Co {count, plural, one {tydzień} few {tygodnie} many {tygodni} other {tygodnia}}",
         "monthly": "Co {count, plural, one {miesiąc} few {miesiące} many {miesięcy} other {miesiąca}}",
         "annual": "Co {count, plural, one {rok} few {lata} many {lat} other {lata}}",
-        "one_off": "Jednorazowo"
+        "one_off": "Jednorazowo",
+        "paymentCount": "{count, plural, one {# płatność} few {# płatności} many {# płatności} other {# płatności}}"
     },
     "DayPicker": {
         "placeholder": "Wybierz dzień",

@@ -25,17 +25,20 @@ from app.models.bill import (
     PaymentStatus,
 )
 from app.models.category import Category
+from app.models.payment import Payment
 from app.models.user import User
 from app.services.recurrence import (
     _bill_active_in_period,
     _due_date_for_period,
     _first_occurrence_on_or_after,
     _next_period,
+    _occurrence_index,
     _occurrences_in_period,
     _step_weeks,
     backfill_template_instances,
     ensure_current_period_instances,
     generate_next_instance,
+    prune_occurrences_beyond_cap,
     validate_schedule,
 )
 
@@ -131,11 +134,13 @@ def _stub(
     interval_count: int = 1,
     start_date: date | None = None,
     due_day: int | None = 15,
+    max_occurrences: int | None = None,
 ) -> types.SimpleNamespace:
     """Lightweight BillTemplate stub for pure-function tests."""
     return types.SimpleNamespace(
         frequency=frequency,
         interval_count=interval_count,
+        max_occurrences=max_occurrences,
         start_period=start_period,
         start_date=start_date,
         due_day=due_day,
@@ -194,6 +199,71 @@ def test_bill_active_in_period_created_at_fallback() -> None:
     assert _bill_active_in_period(template, "2026-04") is True
     # +1 month → inactive
     assert _bill_active_in_period(template, "2026-02") is False
+
+
+# ── _occurrence_index ────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "frequency,interval,start_period,due_date,expected",
+    [
+        # monthly interval 1
+        (BillFrequency.monthly, 1, "2026-01", date(2026, 1, 15), 0),
+        (BillFrequency.monthly, 1, "2026-01", date(2026, 6, 15), 5),
+        (BillFrequency.monthly, 1, "2026-01", date(2027, 1, 15), 12),
+        # monthly interval 3
+        (BillFrequency.monthly, 3, "2026-01", date(2026, 4, 15), 1),
+        (BillFrequency.monthly, 3, "2026-01", date(2027, 1, 15), 4),
+        # annual interval 1 and 2
+        (BillFrequency.annual, 1, "2026-06", date(2027, 6, 10), 1),
+        (BillFrequency.annual, 1, "2026-06", date(2029, 6, 10), 3),
+        (BillFrequency.annual, 2, "2026-06", date(2030, 6, 10), 2),
+        # one-off bills always report index 0
+        (BillFrequency.one_off, 1, "2026-01", date(2026, 1, 15), 0),
+    ],
+)
+def test_occurrence_index_month_anchored(
+    frequency: BillFrequency,
+    interval: int,
+    start_period: str,
+    due_date: date,
+    expected: int,
+) -> None:
+    template = _stub(frequency, start_period, interval_count=interval)
+    assert _occurrence_index(template, due_date) == expected
+
+
+@pytest.mark.parametrize(
+    "interval,start_date,due_date,expected",
+    [
+        (1, date(2026, 1, 5), date(2026, 1, 5), 0),
+        (1, date(2026, 1, 5), date(2026, 1, 26), 3),
+        (1, date(2026, 1, 5), date(2026, 2, 2), 4),
+        (2, date(2026, 1, 5), date(2026, 2, 16), 3),
+        (4, date(2026, 1, 5), date(2026, 3, 2), 2),
+    ],
+)
+def test_occurrence_index_weekly(
+    interval: int, start_date: date, due_date: date, expected: int
+) -> None:
+    template = _stub(
+        BillFrequency.weekly,
+        start_date.strftime("%Y-%m"),
+        interval_count=interval,
+        start_date=start_date,
+        due_day=None,
+    )
+    assert _occurrence_index(template, due_date) == expected
+
+
+def test_occurrence_index_uses_created_at_fallback() -> None:
+    """start_period=None anchors on the created_at UTC month."""
+    template = _stub(
+        BillFrequency.monthly,
+        start_period=None,
+        created_at=datetime(2026, 1, 15, tzinfo=timezone.utc),
+    )
+    assert _occurrence_index(template, date(2026, 4, 15)) == 3
 
 
 # ── _occurrences_in_period ───────────────────────────────────────────────────
@@ -286,6 +356,41 @@ def test_occurrences_in_period_month_anchored(
     assert _occurrences_in_period(template, period) == expected
 
 
+def test_occurrences_in_period_monthly_cap() -> None:
+    """A monthly cap of 4 anchored at 2026-01 allows indices 0..3 only."""
+    template = _stub(BillFrequency.monthly, "2026-01", due_day=15, max_occurrences=4)
+    assert _occurrences_in_period(template, "2026-01") == [date(2026, 1, 15)]
+    assert _occurrences_in_period(template, "2026-04") == [date(2026, 4, 15)]
+    assert _occurrences_in_period(template, "2026-05") == []
+    assert _occurrences_in_period(template, "2026-08") == []
+
+
+def test_occurrences_in_period_weekly_cap() -> None:
+    """Weekly cap counts individual occurrences, not months."""
+    template = _stub(
+        BillFrequency.weekly,
+        "2026-01",
+        interval_count=1,
+        start_date=date(2026, 1, 5),
+        due_day=None,
+        max_occurrences=4,
+    )
+    # January 2026 has exactly the four occurrences with indices 0..3.
+    assert _occurrences_in_period(template, "2026-01") == [
+        date(2026, 1, 5),
+        date(2026, 1, 12),
+        date(2026, 1, 19),
+        date(2026, 1, 26),
+    ]
+    # Every February occurrence has index >= 4.
+    assert _occurrences_in_period(template, "2026-02") == []
+
+
+def test_occurrences_in_period_cap_none_is_unlimited() -> None:
+    template = _stub(BillFrequency.monthly, "2026-01", due_day=15, max_occurrences=None)
+    assert _occurrences_in_period(template, "2030-01") == [date(2030, 1, 15)]
+
+
 @pytest.mark.parametrize(
     "frequency,interval,start_date,expected_error",
     [
@@ -336,6 +441,7 @@ def _make_bill(
     due_day: int | None = 15,
     amount: Decimal = Decimal("100.00"),
     start_period: str = "2026-01",
+    max_occurrences: int | None = None,
     is_paused: bool = False,
     is_archived: bool = False,
 ) -> BillTemplate:
@@ -346,6 +452,7 @@ def _make_bill(
         name="Test Bill",
         frequency=frequency,
         interval_count=interval_count,
+        max_occurrences=max_occurrences,
         start_date=start_date,
         amount=amount,
         currency="PLN",
@@ -367,6 +474,7 @@ def _make_instance(
     period: str,
     *,
     due_date: date | None = None,
+    status: PaymentStatus = PaymentStatus.upcoming,
     is_deleted: bool = False,
 ) -> PaymentInstance:
     year, month = int(period[:4]), int(period[5:])
@@ -375,7 +483,7 @@ def _make_instance(
         period=period,
         due_date=due_date or date(year, month, 1),
         amount=Decimal("100.00"),
-        status=PaymentStatus.upcoming,
+        status=status,
         is_deleted=is_deleted,
     )
     db.add(inst)
@@ -546,6 +654,69 @@ def test_generate_next_instance_copies_amount_and_due_date(db_session) -> None:
 
     assert instance.amount == Decimal("150.00")
     assert instance.due_date == date(2026, 6, 30)  # June has 30 days
+
+
+def test_generate_next_instance_creates_up_to_cap(db_session) -> None:
+    """With cap 3 anchored at 2026-01, the next after 2026-02 is allowed."""
+    user = _make_user(db_session)
+    bill = _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.monthly,
+        due_day=15,
+        start_period="2026-01",
+        max_occurrences=3,
+    )
+    bill_id = bill.id
+    db_session.commit()
+
+    bill = db_session.get(BillTemplate, bill_id)
+    instance = generate_next_instance(db_session, bill, date(2026, 2, 15))
+
+    assert instance is not None
+    assert instance.due_date == date(2026, 3, 15)
+
+
+def test_generate_next_instance_stops_at_cap(db_session) -> None:
+    """The occurrence after the last allowed index is not created."""
+    user = _make_user(db_session)
+    bill = _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.monthly,
+        due_day=15,
+        start_period="2026-01",
+        max_occurrences=3,
+    )
+    bill_id = bill.id
+    db_session.commit()
+
+    bill = db_session.get(BillTemplate, bill_id)
+    # 2026-03 is index 2 (the last allowed); its successor is index 3.
+    result = generate_next_instance(db_session, bill, date(2026, 3, 15))
+
+    assert result is None
+    assert db_session.query(PaymentInstance).filter_by(bill_id=bill_id).count() == 0
+
+
+def test_generate_next_instance_weekly_stops_at_cap(db_session) -> None:
+    user = _make_user(db_session)
+    bill = _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.weekly,
+        start_date=date(2026, 1, 5),
+        due_day=None,
+        start_period="2026-01",
+        max_occurrences=2,
+    )
+    bill_id = bill.id
+    db_session.commit()
+
+    bill = db_session.get(BillTemplate, bill_id)
+    # Index 1 (2026-01-12) is the last allowed occurrence; its successor is 2.
+    assert generate_next_instance(db_session, bill, date(2026, 1, 12)) is None
+    assert db_session.query(PaymentInstance).filter_by(bill_id=bill_id).count() == 0
 
 
 def test_generate_next_instance_returns_tombstone_for_same_due_date(
@@ -838,6 +1009,53 @@ def test_ensure_scoped_to_user(db_session) -> None:
     assert b_count == 0
 
 
+def test_ensure_stops_at_cap(db_session) -> None:
+    """Seeding creates nothing for a period whose occurrence index >= cap."""
+    user = _make_user(db_session)
+    _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.monthly,
+        start_period="2026-01",
+        max_occurrences=2,
+    )
+    user_id = user.id
+    db_session.commit()
+
+    # 2026-03 is index 2 → at the cap, nothing to seed.
+    ensure_current_period_instances(db_session, "2026-03", user_id)
+    assert db_session.query(PaymentInstance).count() == 0
+
+    # 2026-02 is index 1 → allowed.
+    ensure_current_period_instances(db_session, "2026-02", user_id)
+    instances = db_session.query(PaymentInstance).all()
+    assert len(instances) == 1
+    assert instances[0].due_date == date(2026, 2, 15)
+
+
+def test_ensure_weekly_stops_at_cap(db_session) -> None:
+    user = _make_user(db_session)
+    _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.weekly,
+        start_date=date(2026, 1, 5),
+        due_day=None,
+        start_period="2026-01",
+        max_occurrences=2,
+    )
+    user_id = user.id
+    db_session.commit()
+
+    ensure_current_period_instances(db_session, "2026-01", user_id)
+
+    due_dates = {
+        row.due_date
+        for row in db_session.query(PaymentInstance).filter_by(period="2026-01")
+    }
+    assert due_dates == {date(2026, 1, 5), date(2026, 1, 12)}
+
+
 # ── backfill_template_instances ──────────────────────────────────────────────
 
 
@@ -905,6 +1123,59 @@ def test_backfill_skips_inactive_periods_for_monthly_interval_three(
     assert periods == {"2026-01", "2026-04"}
 
 
+def test_backfill_stops_at_cap(db_session) -> None:
+    """Backfill from 2026-01 with cap 2 inserts only the first two occurrences."""
+    user = _make_user(db_session)
+    bill = _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.monthly,
+        start_period="2026-01",
+        max_occurrences=2,
+    )
+    db_session.commit()
+
+    created = backfill_template_instances(db_session, bill, "2026-01", "2026-06")
+
+    assert created == 2
+    periods = {
+        row.period
+        for row in db_session.query(PaymentInstance).filter_by(bill_id=bill.id)
+    }
+    assert periods == {"2026-01", "2026-02"}
+
+
+def test_backfill_weekly_stops_at_cap(db_session) -> None:
+    """Weekly cap 6 allows Jan 5/12/19/26 and Feb 2/9, then stops."""
+    user = _make_user(db_session)
+    bill = _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.weekly,
+        start_date=date(2026, 1, 5),
+        due_day=None,
+        start_period="2026-01",
+        max_occurrences=6,
+    )
+    db_session.commit()
+
+    created = backfill_template_instances(db_session, bill, "2026-01", "2026-03")
+
+    assert created == 6
+    due_dates = {
+        row.due_date
+        for row in db_session.query(PaymentInstance).filter_by(bill_id=bill.id)
+    }
+    assert due_dates == {
+        date(2026, 1, 5),
+        date(2026, 1, 12),
+        date(2026, 1, 19),
+        date(2026, 1, 26),
+        date(2026, 2, 2),
+        date(2026, 2, 9),
+    }
+
+
 def test_backfill_creates_weekly_occurrences(db_session) -> None:
     """Weekly bill anchored 2026-01-05: 4 January + 4 February occurrences."""
     user = _make_user(db_session)
@@ -956,3 +1227,118 @@ def test_backfill_weekly_tombstone_blocks_one_occurrence(db_session) -> None:
 
     assert created == 3
     assert db_session.query(PaymentInstance).filter_by(bill_id=bill.id).count() == 4
+
+
+# ── prune_occurrences_beyond_cap ─────────────────────────────────────────────
+
+
+def test_prune_deletes_only_future_unpaid_beyond_cap(db_session) -> None:
+    """Past occurrences stay, however far beyond the cap they sit."""
+    user = _make_user(db_session)
+    # Cap 1: only index 0 (2025-11) is allowed.
+    bill = _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.monthly,
+        due_day=15,
+        start_period="2025-11",
+        max_occurrences=1,
+    )
+    allowed = _make_instance(
+        db_session, bill.id, "2025-11", due_date=date(2025, 11, 15)
+    )
+    past_beyond = _make_instance(
+        db_session, bill.id, "2025-12", due_date=date(2025, 12, 15)
+    )
+    future_beyond_a = _make_instance(
+        db_session, bill.id, "2026-02", due_date=date(2026, 2, 15)
+    )
+    future_beyond_b = _make_instance(
+        db_session, bill.id, "2026-03", due_date=date(2026, 3, 15)
+    )
+    db_session.commit()
+
+    deleted = prune_occurrences_beyond_cap(db_session, bill, date(2026, 2, 1))
+    db_session.commit()
+
+    assert deleted == 2
+    remaining = {
+        row.id for row in db_session.query(PaymentInstance).filter_by(bill_id=bill.id)
+    }
+    assert remaining == {allowed.id, past_beyond.id}
+    assert future_beyond_a.id not in remaining
+    assert future_beyond_b.id not in remaining
+
+
+def test_prune_keeps_paid_partially_paid_and_tombstones(db_session) -> None:
+    user = _make_user(db_session)
+    # Cap 2 anchored at 2026-01: indices 0 and 1 are allowed.
+    bill = _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.monthly,
+        due_day=15,
+        start_period="2026-01",
+        max_occurrences=2,
+    )
+    paid = _make_instance(
+        db_session,
+        bill.id,
+        "2026-03",
+        due_date=date(2026, 3, 15),
+        status=PaymentStatus.paid,
+    )
+    partial = _make_instance(db_session, bill.id, "2026-04", due_date=date(2026, 4, 15))
+    partial.payments.append(Payment(amount=Decimal("10.00"), paid_on=date(2026, 1, 5)))
+    tombstone = _make_instance(
+        db_session, bill.id, "2026-05", due_date=date(2026, 5, 15), is_deleted=True
+    )
+    plain = _make_instance(db_session, bill.id, "2026-06", due_date=date(2026, 6, 15))
+    db_session.commit()
+
+    deleted = prune_occurrences_beyond_cap(db_session, bill, date(2026, 1, 1))
+    db_session.commit()
+
+    assert deleted == 1
+    remaining = {
+        row.id for row in db_session.query(PaymentInstance).filter_by(bill_id=bill.id)
+    }
+    assert remaining == {paid.id, partial.id, tombstone.id}
+    assert plain.id not in remaining
+
+
+def test_prune_noop_when_cap_is_none(db_session) -> None:
+    user = _make_user(db_session)
+    bill = _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.monthly,
+        due_day=15,
+        start_period="2026-01",
+    )
+    instance = _make_instance(
+        db_session, bill.id, "2030-01", due_date=date(2030, 1, 15)
+    )
+    db_session.commit()
+
+    assert prune_occurrences_beyond_cap(db_session, bill, date(2026, 1, 1)) == 0
+    assert db_session.get(PaymentInstance, instance.id) is not None
+
+
+def test_prune_noop_when_nothing_beyond_cap(db_session) -> None:
+    user = _make_user(db_session)
+    bill = _make_bill(
+        db_session,
+        user.id,
+        frequency=BillFrequency.monthly,
+        due_day=15,
+        start_period="2026-01",
+        max_occurrences=5,
+    )
+    instance = _make_instance(
+        db_session, bill.id, "2026-02", due_date=date(2026, 2, 15)
+    )
+    db_session.commit()
+
+    assert prune_occurrences_beyond_cap(db_session, bill, date(2026, 1, 1)) == 0
+    assert db_session.get(PaymentInstance, instance.id) is not None

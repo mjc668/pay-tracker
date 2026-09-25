@@ -396,3 +396,184 @@ def test_patch_interval_out_of_bounds_returns_422(client_db):
         f"/bills/{bill_id}", json={"interval_count": 13}, headers=auth(token)
     )
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# PATCH /bills/{id} — max_occurrences
+# ---------------------------------------------------------------------------
+
+
+def _shift_period(period: str, delta: int) -> str:
+    year, month = map(int, period.split("-"))
+    total = year * 12 + month - 1 + delta
+    return f"{total // 12:04d}-{total % 12 + 1:02d}"
+
+
+def _day15(period: str) -> date:
+    year, month = map(int, period.split("-"))
+    return date(year, month, 15)
+
+
+def test_patch_lowering_cap_prunes_future_unpaid(client_db):
+    """Lowering the cap removes future, unpaid, non-deleted, event-free rows."""
+    client, db = client_db
+    token = register_and_login(client, "cap_prune@test.com")
+    bill_id = _create_bill(client, token)  # monthly anchored in the current month
+    current = _current_period()
+
+    plus1 = _insert_instance(
+        db, bill_id, _shift_period(current, 1), _day15(_shift_period(current, 1))
+    )
+    plus2 = _insert_instance(
+        db, bill_id, _shift_period(current, 2), _day15(_shift_period(current, 2))
+    )
+    plus3 = _insert_instance(
+        db, bill_id, _shift_period(current, 3), _day15(_shift_period(current, 3))
+    )
+
+    # Cap 2 allows indices 0 (current month) and 1 (+1 month).
+    r = client.patch(
+        f"/bills/{bill_id}", json={"max_occurrences": 2}, headers=auth(token)
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["max_occurrences"] == 2
+
+    db.expire_all()
+    assert db.get(PaymentInstance, plus1.id) is not None
+    assert db.get(PaymentInstance, plus2.id) is None
+    assert db.get(PaymentInstance, plus3.id) is None
+
+
+def test_patch_lowering_cap_keeps_paid_partial_and_tombstones(client_db):
+    client, db = client_db
+    token = register_and_login(client, "cap_keep@test.com")
+    bill_id = _create_bill(client, token)
+    current = _current_period()
+
+    paid = _insert_instance(
+        db,
+        bill_id,
+        _shift_period(current, 2),
+        _day15(_shift_period(current, 2)),
+        status=PaymentStatus.paid,
+    )
+    partial = _insert_instance(
+        db, bill_id, _shift_period(current, 3), _day15(_shift_period(current, 3))
+    )
+    tombstone = _insert_instance(
+        db,
+        bill_id,
+        _shift_period(current, 4),
+        _day15(_shift_period(current, 4)),
+        is_deleted=True,
+    )
+    plain = _insert_instance(
+        db, bill_id, _shift_period(current, 5), _day15(_shift_period(current, 5))
+    )
+
+    r = client.post(
+        f"/bills/payments/{partial.id}/payments",
+        json={"amount": "10.00"},
+        headers=auth(token),
+    )
+    assert r.status_code == 200, r.text  # partial → stays unpaid but has an event
+
+    r = client.patch(
+        f"/bills/{bill_id}", json={"max_occurrences": 1}, headers=auth(token)
+    )
+    assert r.status_code == 200, r.text
+
+    db.expire_all()
+    assert db.get(PaymentInstance, paid.id) is not None
+    assert db.get(PaymentInstance, partial.id) is not None
+    assert db.get(PaymentInstance, tombstone.id) is not None
+    assert db.get(PaymentInstance, plain.id) is None
+
+
+def test_patch_raising_cap_does_not_prune(client_db):
+    client, db = client_db
+    token = register_and_login(client, "cap_raise@test.com")
+    bill_id = _create_bill(client, token, {"max_occurrences": 1})
+    current = _current_period()
+    beyond = _insert_instance(
+        db, bill_id, _shift_period(current, 2), _day15(_shift_period(current, 2))
+    )
+
+    r = client.patch(
+        f"/bills/{bill_id}", json={"max_occurrences": 5}, headers=auth(token)
+    )
+    assert r.status_code == 200, r.text
+
+    db.expire_all()
+    assert db.get(PaymentInstance, beyond.id) is not None
+
+
+def test_patch_clearing_cap_does_not_prune(client_db):
+    client, db = client_db
+    token = register_and_login(client, "cap_clear@test.com")
+    bill_id = _create_bill(client, token, {"max_occurrences": 1})
+    current = _current_period()
+    beyond = _insert_instance(
+        db, bill_id, _shift_period(current, 2), _day15(_shift_period(current, 2))
+    )
+
+    r = client.patch(
+        f"/bills/{bill_id}", json={"max_occurrences": None}, headers=auth(token)
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["max_occurrences"] is None
+
+    db.expire_all()
+    assert db.get(PaymentInstance, beyond.id) is not None
+
+
+def test_patch_one_off_forces_max_occurrences_null(client_db):
+    client, db = client_db
+    token = register_and_login(client, "cap_oneoff_patch@test.com")
+    bill_id = _create_bill(client, token, {"max_occurrences": 4})
+
+    r = client.patch(
+        f"/bills/{bill_id}",
+        json={"frequency": "one_off", "max_occurrences": 5},
+        headers=auth(token),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["frequency"] == "one_off"
+    assert r.json()["max_occurrences"] is None
+
+
+def test_patch_frequency_to_one_off_clears_existing_cap(client_db):
+    client, db = client_db
+    token = register_and_login(client, "cap_oneoff_clear@test.com")
+    bill_id = _create_bill(client, token, {"max_occurrences": 4})
+
+    r = client.patch(
+        f"/bills/{bill_id}", json={"frequency": "one_off"}, headers=auth(token)
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["max_occurrences"] is None
+
+
+@pytest.mark.parametrize("value", [0, 1000, -3])
+def test_patch_max_occurrences_out_of_bounds_returns_422(client_db, value):
+    client, db = client_db
+    token = register_and_login(client, f"cap_bounds_{value}@test.com")
+    bill_id = _create_bill(client, token)
+
+    r = client.patch(
+        f"/bills/{bill_id}", json={"max_occurrences": value}, headers=auth(token)
+    )
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("value", [1, 999])
+def test_patch_max_occurrences_at_bounds_accepted(client_db, value):
+    client, db = client_db
+    token = register_and_login(client, f"cap_ok_{value}@test.com")
+    bill_id = _create_bill(client, token)
+
+    r = client.patch(
+        f"/bills/{bill_id}", json={"max_occurrences": value}, headers=auth(token)
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["max_occurrences"] == value

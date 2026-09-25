@@ -78,6 +78,11 @@ export default function DeletePaymentDialog({
           <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-400">
             {frequencyLabel}
           </span>
+          {isRecurring && instance.max_occurrences != null && (
+            <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
+              · {tFreq("paymentCount", { count: instance.max_occurrences })}
+            </span>
+          )}
         </p>
 
         <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">

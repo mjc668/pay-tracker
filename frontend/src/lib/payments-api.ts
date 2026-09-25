@@ -28,6 +28,7 @@ export interface PaymentInstanceOut {
   currency: string;
   frequency: BillFrequency;
   interval_count: number;
+  max_occurrences: number | null;
   start_date: string | null;
   category: Category;
   email_sent_at: string | null;

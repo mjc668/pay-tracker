@@ -37,6 +37,7 @@ from app.services.recurrence import (
     ensure_current_period_instances,
     generate_future_instances,
     generate_next_instance,
+    prune_occurrences_beyond_cap,
     recompute_weekly_instances,
     validate_schedule,
 )
@@ -105,6 +106,7 @@ def _to_out(
             "currency": inst.template.currency,
             "frequency": inst.template.frequency,
             "interval_count": inst.template.interval_count,
+            "max_occurrences": inst.template.max_occurrences,
             "start_date": inst.template.start_date,
             "category": inst.template.category,
             "email_sent_at": inst.email_sent_at,
@@ -142,6 +144,7 @@ def create_bill(
     now = datetime.now(timezone.utc)
     frequency = body.frequency
     interval_count = 1 if frequency == BF.one_off else body.interval_count
+    max_occurrences = None if frequency == BF.one_off else body.max_occurrences
     start_date = body.start_date if frequency == BF.weekly else None
     due_day = None if frequency == BF.weekly else body.due_day
 
@@ -172,6 +175,7 @@ def create_bill(
         category_id=category.id,
         frequency=frequency,
         interval_count=interval_count,
+        max_occurrences=max_occurrences,
         start_date=start_date,
         amount=body.amount,
         currency=body.currency,
@@ -486,11 +490,14 @@ def update_bill(
     legacy_key = updates.pop("category", None)
 
     old_frequency = bill.frequency
+    old_max_occurrences = bill.max_occurrences
     effective_frequency = updates.get("frequency", old_frequency)
     effective_interval = updates.get("interval_count", bill.interval_count)
     effective_start_date = updates.get("start_date", bill.start_date)
+    effective_max_occurrences = updates.get("max_occurrences", old_max_occurrences)
     if effective_frequency == BF.one_off:
         effective_interval = 1
+        effective_max_occurrences = None  # one-off bills ignore the cap
 
     error = validate_schedule(
         effective_frequency, effective_interval, effective_start_date
@@ -506,8 +513,17 @@ def update_bill(
         or ("start_date" in updates and updates["start_date"] != bill.start_date)
     )
 
+    cap_shrank = effective_max_occurrences is not None and (
+        old_max_occurrences is None or effective_max_occurrences < old_max_occurrences
+    )
+    # A schedule change can also push existing future rows past the cap.
+    prune_needed = cap_shrank or (
+        schedule_changed and effective_max_occurrences is not None
+    )
+
     updates["frequency"] = effective_frequency
     updates["interval_count"] = effective_interval
+    updates["max_occurrences"] = effective_max_occurrences
     if effective_frequency == BF.weekly:
         updates["due_day"] = None  # due_day is ignored for weekly bills
     else:
@@ -567,6 +583,9 @@ def update_bill(
                 # matches it and a month can hold several occurrences.
                 inst.due_date = _due_date_for_period(inst.period, bill.due_day)
             inst.status = PaymentStatus.upcoming
+
+    if prune_needed:
+        prune_occurrences_beyond_cap(db, bill, date.today())
 
     db.commit()
     db.refresh(bill)

@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.bill import BillFrequency, BillTemplate, PaymentInstance, PaymentStatus
+from app.models.payment import Payment
 
 # Allowed interval_count per unit: weekly 1-4, monthly 1-12, annual 1-5.
 _INTERVAL_MAX: dict[BillFrequency, int] = {
@@ -76,6 +77,34 @@ def _step_months(template: BillTemplate) -> int:
     return template.interval_count
 
 
+def _occurrence_index(template: BillTemplate, due_date: date) -> int:
+    """Zero-based index of `due_date` in the template's occurrence sequence.
+
+    Weekly bills count steps from `start_date`; month-anchored bills count
+    steps of `_step_months` from the `start_period` anchor (falling back to
+    the creation month); one-off bills have a single occurrence at index 0.
+    """
+    if template.frequency == BillFrequency.one_off:
+        return 0
+    if template.frequency == BillFrequency.weekly:
+        if template.start_date is None:
+            return 0
+        return (due_date - template.start_date).days // (7 * template.interval_count)
+
+    # Use start_period (YYYY-MM) as the recurrence anchor when set.
+    # Falls back to created_at UTC month for rows predating the column.
+    anchor = template.start_period or template.created_at.strftime("%Y-%m")
+    anchor_year, anchor_month = map(int, anchor.split("-"))
+    months_diff = (due_date.year - anchor_year) * 12 + (due_date.month - anchor_month)
+    return months_diff // _step_months(template)
+
+
+def _cap_reached(template: BillTemplate, due_date: date) -> bool:
+    """True when `due_date` is at or past the template's occurrence cap."""
+    cap = template.max_occurrences
+    return cap is not None and _occurrence_index(template, due_date) >= cap
+
+
 def _bill_active_in_period(template: BillTemplate, period: str) -> bool:
     """Return True if a month-anchored template's schedule hits the period.
 
@@ -127,18 +156,25 @@ def _occurrences_in_period(template: BillTemplate, period: str) -> list[date]:
 
     Weekly schedules can yield several occurrences per month; month-anchored
     units yield zero or one; one-off bills yield their single due date in the
-    anchor period.
+    anchor period. Occurrences at or past `max_occurrences` are filtered out
+    here — the single funnel shared by seeding, backfill, the series generator
+    and the dashboard forecast.
     """
     if template.frequency == BillFrequency.weekly:
-        return _weekly_occurrences_in_period(template, period)
-    if template.frequency == BillFrequency.one_off:
+        occurrences = _weekly_occurrences_in_period(template, period)
+    elif template.frequency == BillFrequency.one_off:
         anchor = template.start_period or template.created_at.strftime("%Y-%m")
-        if period != anchor:
-            return []
-        return [_due_date_for_period(period, template.due_day)]
-    if _bill_active_in_period(template, period):
-        return [_due_date_for_period(period, template.due_day)]
-    return []
+        occurrences = (
+            [_due_date_for_period(period, template.due_day)] if period == anchor else []
+        )
+    elif _bill_active_in_period(template, period):
+        occurrences = [_due_date_for_period(period, template.due_day)]
+    else:
+        occurrences = []
+
+    return [
+        due_date for due_date in occurrences if not _cap_reached(template, due_date)
+    ]
 
 
 def _first_occurrence_on_or_after(start: date, interval: int, target: date) -> date:
@@ -305,6 +341,9 @@ def generate_next_instance(
         )
         next_due_date = _due_date_for_period(next_period, template.due_day)
 
+    if _cap_reached(template, next_due_date):
+        return None
+
     # idempotent: skip if already exists
     existing = (
         db.query(PaymentInstance)
@@ -339,6 +378,53 @@ def generate_next_instance(
         )
     db.refresh(instance)
     return instance
+
+
+def prune_occurrences_beyond_cap(
+    db: Session, template: BillTemplate, today: date
+) -> int:
+    """Delete future unpaid instances that sit at or past the occurrence cap.
+
+    Only non-deleted rows with no payment events are removed, so paid and
+    partially-paid history is never touched. Returns the number of deleted
+    rows; the caller owns the commit.
+    """
+    if template.max_occurrences is None:
+        return 0
+
+    candidates = (
+        db.query(PaymentInstance)
+        .filter(
+            PaymentInstance.bill_id == template.id,
+            PaymentInstance.due_date >= today,
+            PaymentInstance.status != PaymentStatus.paid,
+            PaymentInstance.is_deleted.is_(False),
+        )
+        .all()
+    )
+    beyond_cap = [
+        instance
+        for instance in candidates
+        if _occurrence_index(template, instance.due_date) >= template.max_occurrences
+    ]
+    if not beyond_cap:
+        return 0
+
+    candidate_ids = [instance.id for instance in beyond_cap]
+    with_events = {
+        row[0]
+        for row in db.query(Payment.instance_id)
+        .filter(Payment.instance_id.in_(candidate_ids))
+        .all()
+    }
+
+    deleted = 0
+    for instance in beyond_cap:
+        if instance.id in with_events:
+            continue
+        db.delete(instance)
+        deleted += 1
+    return deleted
 
 
 def recompute_weekly_instances(db: Session, template: BillTemplate, today: date) -> int:

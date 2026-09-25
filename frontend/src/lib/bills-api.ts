@@ -23,6 +23,7 @@ export interface BillTemplateOut {
   category: Category;
   frequency: BillFrequency;
   interval_count: number;
+  max_occurrences: number | null;
   start_date: string | null;
   amount: string;
   currency: string;
@@ -40,6 +41,7 @@ export interface BillTemplateCreate {
   category_id: number;
   frequency: BillFrequency;
   interval_count?: number;
+  max_occurrences?: number | null;
   start_date?: string | null;
   amount: string;
   currency?: string;

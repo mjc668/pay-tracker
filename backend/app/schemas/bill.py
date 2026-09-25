@@ -17,6 +17,7 @@ class BillTemplateCreate(BaseModel):
     category: str | None = None  # legacy default-key string, resolved server-side
     frequency: BillFrequency
     interval_count: int = Field(1, ge=1)
+    max_occurrences: int | None = Field(None, ge=1, le=999)  # None = unlimited
     start_date: date | None = None  # weekly anchor ("first payment date")
     amount: Decimal = Decimal("0")
     currency: str = "PLN"
@@ -38,6 +39,7 @@ class BillTemplateUpdate(BaseModel):
     category: str | None = None  # legacy default-key string, resolved server-side
     frequency: BillFrequency | None = None
     interval_count: int | None = Field(None, ge=1)
+    max_occurrences: int | None = Field(None, ge=1, le=999)  # None = unlimited
     start_date: date | None = None
     amount: Decimal | None = None
     currency: str | None = None
@@ -56,6 +58,7 @@ class BillTemplateOut(BaseModel):
     category: CategoryOut
     frequency: BillFrequency
     interval_count: int = 1
+    max_occurrences: int | None = None
     start_date: date | None = None
     amount: Decimal
     currency: str
@@ -101,6 +104,7 @@ class PaymentInstanceOut(BaseModel):
     currency: str
     frequency: BillFrequency
     interval_count: int = 1
+    max_occurrences: int | None = None
     start_date: date | None = None
     category: CategoryOut
     email_sent_at: datetime | None
@@ -154,6 +158,7 @@ class BackupTemplate(BaseModel):
     category: str | None
     frequency: BillFrequency
     interval_count: int = Field(1, ge=1)
+    max_occurrences: int | None = None
     start_date: str | None = None
     amount: Decimal
     currency: str

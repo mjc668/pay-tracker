@@ -163,6 +163,9 @@
             "monthly": "{count, plural, one {Monat} other {Monate}}",
             "annual": "{count, plural, one {Jahr} other {Jahre}}"
         },
+        "setNumberOfPayments": "Anzahl der Zahlungen festlegen",
+        "numberOfPaymentsLabel": "Anzahl der Zahlungen",
+        "maxOccurrencesInvalid": "Gib eine Anzahl zwischen 1 und 999 ein.",
         "dueDateLabel": "Fälligkeitsdatum",
         "startDateLabel": "Startmonat und -tag",
         "firstPaymentDateLabel": "Datum der ersten Zahlung",
@@ -210,7 +213,8 @@
         "weekly": "{count, plural, one {Jede Woche} other {Alle # Wochen}}",
         "monthly": "{count, plural, one {Jeden Monat} other {Alle # Monate}}",
         "annual": "{count, plural, one {Jedes Jahr} other {Alle # Jahre}}",
-        "one_off": "Einmalig"
+        "one_off": "Einmalig",
+        "paymentCount": "{count, plural, one {# Zahlung} other {# Zahlungen}}"
     },
     "DayPicker": {
         "placeholder": "Tag auswählen",

@@ -53,6 +53,9 @@ class BillTemplate(Base):
     interval_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )  # repeat every N units (weeks/months/years)
+    # Optional total number of occurrences (1-999), counted from the anchor.
+    # NULL means unlimited. Forced NULL for one_off bills.
+    max_occurrences: Mapped[int | None] = mapped_column(Integer)
     start_date: Mapped[date | None] = mapped_column(Date)  # weekly anchor
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="PLN")

@@ -338,3 +338,60 @@ def test_boundary_months_are_valid(client, months):
 def test_requires_authentication(client):
     r = client.post("/bills/generate-instances", json={"months": 6})
     assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# max_occurrences
+# ---------------------------------------------------------------------------
+
+
+def test_monthly_generation_stops_at_cap(client_db):
+    """Cap 3 anchored this month → only +1 and +2 fall before the cap."""
+    client, db = client_db
+    token = register_and_login(client, "gen_cap_monthly@test.com")
+    current = _current_month()
+    bill_id = _create_bill(client, token, {"max_occurrences": 3})
+
+    r = _generate(client, token, months=6)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"created": 2, "bill_count": 1, "months": 6}
+    assert _periods_in_db(db, bill_id) == {
+        _shift(current, 1),
+        _shift(current, 2),
+    }
+
+
+def test_weekly_generation_stops_at_cap(client_db):
+    """A weekly cap counts individual occurrences, across month boundaries."""
+    client, db = client_db
+    token = register_and_login(client, "gen_cap_weekly@test.com")
+    current = _current_month()
+    start = date(int(current[:4]), int(current[5:]), 1)
+    bill_id = _create_bill(
+        client,
+        token,
+        {
+            "name": "Weekly capped",
+            "frequency": "weekly",
+            "start_date": start.isoformat(),
+            "due_day": None,
+            "max_occurrences": 8,
+        },
+    )
+    target_periods = {_shift(current, 1), _shift(current, 2)}
+
+    r = _generate(client, token, months=2)
+    assert r.status_code == 200, r.text
+
+    # Independent oracle: the first eight 7-day steps from the anchor.
+    expected = {
+        start + timedelta(days=7 * k)
+        for k in range(8)
+        if (start + timedelta(days=7 * k)).strftime("%Y-%m") in target_periods
+    }
+    assert r.json()["created"] == len(expected)
+    assert _periods_in_db(db, bill_id) == {due.strftime("%Y-%m") for due in expected}
+    assert {
+        row.due_date
+        for row in db.query(PaymentInstance).filter(PaymentInstance.bill_id == bill_id)
+    } == expected

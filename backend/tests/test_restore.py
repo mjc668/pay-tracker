@@ -129,7 +129,7 @@ def test_restore_happy_path(client):
     client.get("/bills/payments", headers=auth(tok))
 
     backup = client.get("/export/json", headers=auth(tok)).json()
-    assert backup["schema_version"] == 6
+    assert backup["schema_version"] == 7
 
     r = _upload(client, tok, backup)
     assert r.status_code == 200
@@ -295,7 +295,7 @@ def test_round_trip_field_level(client):
     assert r.status_code == 200
 
     backup = client.get("/export/json", headers=auth(tok)).json()
-    assert backup["schema_version"] == 6
+    assert backup["schema_version"] == 7
     n_templates = len(backup["bill_templates"])
     n_instances = len(backup["payment_instances"])
     n_payments = len(backup["payments"])
@@ -490,7 +490,7 @@ def test_v3_backup_synthesizes_ledger_payments(client):
     assert r.json()["restored_instances"] == 1
 
     after = client.get("/export/json", headers=auth(tok)).json()
-    assert after["schema_version"] == 6
+    assert after["schema_version"] == 7
     assert len(after["payments"]) == 1
     payment = after["payments"][0]
     assert payment["instance_id"] == after["payment_instances"][0]["id"]
@@ -679,7 +679,7 @@ def test_v5_round_trip_weekly_interval_and_start_date(client):
     assert r.status_code == 201, r.text
 
     backup = client.get("/export/json", headers=auth(tok)).json()
-    assert backup["schema_version"] == 6
+    assert backup["schema_version"] == 7
     template = backup["bill_templates"][0]
     assert template["frequency"] == "weekly"
     assert template["interval_count"] == 2
@@ -723,7 +723,7 @@ def test_v6_export_default_category_as_key(client):
     _create_bill_with_category(client, tok, "Power", utilities["id"])
 
     backup = client.get("/export/json", headers=auth(tok)).json()
-    assert backup["schema_version"] == 6
+    assert backup["schema_version"] == 7
     assert backup["bill_templates"][0]["category"] == "utilities"
 
 
@@ -808,3 +808,62 @@ def test_restore_never_deletes_user_categories(client):
 
     cats = client.get("/categories", headers=auth(tok)).json()
     assert "Pets" in [c["name"] for c in cats]
+
+
+# ---------------------------------------------------------------------------
+# v7 schema: max_occurrences
+# ---------------------------------------------------------------------------
+
+
+def test_v7_round_trip_max_occurrences(client):
+    tok = register_and_login(client, "v7max@test.com")
+    r = client.post("/bills", json={**_BILL, "max_occurrences": 4}, headers=auth(tok))
+    assert r.status_code == 201, r.text
+
+    backup = client.get("/export/json", headers=auth(tok)).json()
+    assert backup["schema_version"] == 7
+    assert backup["bill_templates"][0]["max_occurrences"] == 4
+
+    r = _upload(client, tok, backup)
+    assert r.status_code == 200, r.text
+
+    bills = client.get("/bills", headers=auth(tok)).json()
+    assert len(bills) == 1
+    assert bills[0]["max_occurrences"] == 4
+
+
+def test_v7_export_includes_null_max_occurrences(client):
+    tok = register_and_login(client, "v7null@test.com")
+    r = client.post("/bills", json=_BILL, headers=auth(tok))
+    assert r.status_code == 201
+
+    backup = client.get("/export/json", headers=auth(tok)).json()
+    assert backup["schema_version"] == 7
+    assert backup["bill_templates"][0]["max_occurrences"] is None
+
+
+def test_v6_backup_restores_with_null_max_occurrences(client):
+    """A v6 payload has no max_occurrences field; it restores as unlimited."""
+    tok = register_and_login(client, "v6max@test.com")
+    payload = _make_backup([_template_dict()], [], schema_version=6)
+
+    r = _upload(client, tok, payload)
+    assert r.status_code == 200, r.text
+
+    bills = client.get("/bills", headers=auth(tok)).json()
+    assert len(bills) == 1
+    assert bills[0]["max_occurrences"] is None
+
+
+def test_v7_backup_can_clear_existing_cap(client):
+    """Restore is destructive: a v7 backup without a cap clears a live one."""
+    tok = register_and_login(client, "v7clear@test.com")
+    r = client.post("/bills", json={**_BILL, "max_occurrences": 6}, headers=auth(tok))
+    assert r.status_code == 201
+
+    payload = _make_backup([_template_dict()], [], schema_version=7)
+    r = _upload(client, tok, payload)
+    assert r.status_code == 200, r.text
+
+    bills = client.get("/bills", headers=auth(tok)).json()
+    assert bills[0]["max_occurrences"] is None

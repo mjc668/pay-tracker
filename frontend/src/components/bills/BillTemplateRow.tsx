@@ -76,6 +76,7 @@ export default function BillTemplateRow({
   onArchive,
 }: Props) {
   const t = useTranslations("BillTemplateRow");
+  const tFreq = useTranslations("Frequencies");
   const locale = useLocale();
   const [actionsOpen, setActionsOpen] = useState(false);
 
@@ -118,6 +119,11 @@ export default function BillTemplateRow({
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400">
               {t(`frequency.${frequency}`, { count: template.interval_count ?? 1 })}
             </span>
+            {frequency !== "one_off" && template.max_occurrences != null && (
+              <span className="text-xs text-slate-400 dark:text-slate-500">
+                · {tFreq("paymentCount", { count: template.max_occurrences })}
+              </span>
+            )}
             {dueLabel && (
               <span className="text-xs text-slate-400 dark:text-slate-500">
                 {frequency === "weekly" ? (
@@ -184,6 +190,7 @@ export default function BillTemplateRow({
               category_id: template.category.id,
               frequency: template.frequency,
               interval_count: template.interval_count,
+              max_occurrences: template.max_occurrences,
               start_date: template.start_date,
               amount: template.amount,
               currency: template.currency,

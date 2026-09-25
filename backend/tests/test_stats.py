@@ -405,6 +405,65 @@ def test_forecast_counts_weekly_occurrences_per_month(client_db):
         assert _dec(point["expected_total"]) == Decimal("10.00") * occurrences, point
 
 
+def test_forecast_monthly_respects_max_occurrences(client_db):
+    """A monthly cap of 3 anchored this month stops the forecast after +2."""
+    client, db = client_db
+    token = register_and_login(client, "stats_forecast_cap@test.com")
+    current = date.today().strftime("%Y-%m")
+
+    _create_bill(client, token, {"amount": "100.00", "max_occurrences": 3})
+
+    forecast = _overview(client, token)["forecast"]
+    expected = {
+        1: Decimal("100.00"),
+        2: Decimal("100.00"),
+        3: Decimal("0"),
+        4: Decimal("0"),
+        5: Decimal("0"),
+        6: Decimal("0"),
+    }
+    assert [point["period"] for point in forecast] == [
+        _shift(current, offset) for offset in range(1, 7)
+    ]
+    for offset, value in expected.items():
+        assert _dec(forecast[offset - 1]["expected_total"]) == value, forecast[
+            offset - 1
+        ]
+
+
+def test_forecast_weekly_respects_max_occurrences(client_db):
+    """The washed-out weeks past a weekly cap contribute nothing."""
+    client, db = client_db
+    token = register_and_login(client, "stats_forecast_cap_weekly@test.com")
+    current = date.today().strftime("%Y-%m")
+    start = date(int(current[:4]), int(current[5:]), 1)
+
+    _create_bill(
+        client,
+        token,
+        {
+            "name": "Weekly capped",
+            "frequency": "weekly",
+            "start_date": start.isoformat(),
+            "amount": "10.00",
+            "due_day": None,
+            "max_occurrences": 6,
+        },
+    )
+
+    forecast = _overview(client, token)["forecast"]
+    # Independent oracle: only the first six 7-day steps count.
+    expected: dict[str, Decimal] = {}
+    for k in range(6):
+        period = (start + timedelta(days=7 * k)).strftime("%Y-%m")
+        expected[period] = expected.get(period, Decimal("0")) + Decimal("10.00")
+
+    for point in forecast:
+        assert _dec(point["expected_total"]) == expected.get(
+            point["period"], Decimal("0")
+        ), point
+
+
 def test_forecast_excludes_paused_and_archived(client_db):
     client, db = client_db
     token = register_and_login(client, "stats_forecast_excluded@test.com")

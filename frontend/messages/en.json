@@ -163,6 +163,9 @@
             "monthly": "{count, plural, one {month} other {months}}",
             "annual": "{count, plural, one {year} other {years}}"
         },
+        "setNumberOfPayments": "Set number of payments",
+        "numberOfPaymentsLabel": "Number of payments",
+        "maxOccurrencesInvalid": "Enter a number of payments between 1 and 999.",
         "dueDateLabel": "Due date",
         "startDateLabel": "Starting month & day",
         "firstPaymentDateLabel": "First payment date",
@@ -210,7 +213,8 @@
         "weekly": "Every {count, plural, one {week} other {# weeks}}",
         "monthly": "Every {count, plural, one {month} other {# months}}",
         "annual": "Every {count, plural, one {year} other {# years}}",
-        "one_off": "One-off"
+        "one_off": "One-off",
+        "paymentCount": "{count, plural, one {# payment} other {# payments}}"
     },
     "DayPicker": {
         "placeholder": "Select day",

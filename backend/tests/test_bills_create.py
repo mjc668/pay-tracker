@@ -351,3 +351,58 @@ def test_create_non_weekly_ignores_start_date(client):
     )
     assert r.status_code == 201
     assert r.json()["start_date"] is None
+
+
+# ---------------------------------------------------------------------------
+# max_occurrences
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value", [0, 1000, -1])
+def test_create_bill_max_occurrences_out_of_bounds_returns_422(client, value):
+    token = register_and_login(client, f"val_max_occ_{value}@test.com")
+    r = client.post("/bills", json=_bill(max_occurrences=value), headers=auth(token))
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("value", [1, 999])
+def test_create_bill_max_occurrences_at_bound_is_accepted(client, value):
+    token = register_and_login(client, f"val_max_occ_ok_{value}@test.com")
+    r = client.post("/bills", json=_bill(max_occurrences=value), headers=auth(token))
+    assert r.status_code == 201, r.text
+    assert r.json()["max_occurrences"] == value
+
+
+def test_create_bill_max_occurrences_defaults_to_null(client):
+    token = register_and_login(client, "max_occ_default@test.com")
+    r = client.post("/bills", json=_bill(), headers=auth(token))
+    assert r.status_code == 201, r.text
+    assert r.json()["max_occurrences"] is None
+
+
+def test_create_bill_persists_max_occurrences(client):
+    token = register_and_login(client, "max_occ_persist@test.com")
+    r = client.post("/bills", json=_bill(max_occurrences=12), headers=auth(token))
+    assert r.status_code == 201, r.text
+    bill_id = r.json()["id"]
+
+    bills = client.get("/bills", headers=auth(token)).json()
+    created = next(b for b in bills if b["id"] == bill_id)
+    assert created["max_occurrences"] == 12
+
+    # Payment instance payloads carry the cap too (DeletePaymentDialog label).
+    sync_payments(client, token)
+    payments = client.get("/bills/payments", headers=auth(token)).json()
+    instance = next(p for p in payments if p["bill_id"] == bill_id)
+    assert instance["max_occurrences"] == 12
+
+
+def test_create_one_off_forces_max_occurrences_null(client):
+    token = register_and_login(client, "max_occ_oneoff@test.com")
+    r = client.post(
+        "/bills",
+        json=_bill(frequency="one_off", due_month=1, due_day=None, max_occurrences=4),
+        headers=auth(token),
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["max_occurrences"] is None

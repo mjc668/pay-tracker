@@ -11,6 +11,7 @@ import { useCollapsedCategories } from "@/hooks/useCollapsedCategories";
 
 export default function ArchivedBillsPage() {
   const t = useTranslations("ArchivedBillsPage");
+  const tFreq = useTranslations("Frequencies");
   const tRoot = useTranslations();
   const locale = useLocale();
   const [templates, setTemplates] = useState<BillTemplateOut[]>([]);
@@ -151,6 +152,12 @@ export default function ArchivedBillsPage() {
                               count: tmpl.interval_count ?? 1,
                             })}
                           </span>
+                          {normalizeBillFrequency(tmpl.frequency) !== "one_off" &&
+                            tmpl.max_occurrences != null && (
+                              <span className="text-xs text-slate-400 dark:text-slate-500">
+                                · {tFreq("paymentCount", { count: tmpl.max_occurrences })}
+                              </span>
+                            )}
                         </div>
                       </div>
                       <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400">
